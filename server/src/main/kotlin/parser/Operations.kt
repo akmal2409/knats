@@ -7,12 +7,10 @@ sealed interface ParsingResult
 
 data class ParsingError(val reason: String, val throwable: Throwable? = null) : ParsingResult {
     companion object {
-        val UNKNOWN_COMMAND = ParsingError("Unknown command supplied")
-        val MISSING_ARGUMENTS = ParsingError("Arguments are missing")
-        val INVALID_PAYLOAD_SIZE =
-            ParsingError("Invalid payload size. Either negative or exceeds max config")
+        val INVALID_CLIENT_PROTOCOL = ParsingError("Invalid Client Protocol")
+        val MAXIMUM_PAYLOAD_VIOLATION =
+            ParsingError("Maximum Payload Violation")
         val INVALID_STRING_TERMINATION = ParsingError("New line character expected")
-        val MAX_ARG_SIZE_EXCEEDED = ParsingError("Max arg size exceeded")
     }
 }
 

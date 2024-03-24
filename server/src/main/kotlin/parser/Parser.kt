@@ -3,11 +3,8 @@ package io.github.akmal2409.nats.server.parser
 import java.nio.ByteBuffer
 import parser.ConnectCommand
 import parser.ParsingError
-import parser.ParsingError.Companion.INVALID_PAYLOAD_SIZE
-import parser.ParsingError.Companion.INVALID_STRING_TERMINATION
-import parser.ParsingError.Companion.MAX_ARG_SIZE_EXCEEDED
-import parser.ParsingError.Companion.MISSING_ARGUMENTS
-import parser.ParsingError.Companion.UNKNOWN_COMMAND
+import parser.ParsingError.Companion.INVALID_CLIENT_PROTOCOL
+import parser.ParsingError.Companion.MAXIMUM_PAYLOAD_VIOLATION
 import parser.ParsingResult
 import parser.PendingParsing
 import parser.PongOperation
@@ -74,24 +71,15 @@ class Context(
     var whitespaceAfterCommand: Int = 0,
     var carriageReturnEncountered: Boolean = false,
     var parsingArgs: Boolean = false,
+    var readingBody: Boolean = false,
     var stateAfterParsedArgs: State? = null,
     var argsBuffer: ByteBuffer? = null,
     var payloadBuffer: ByteBuffer? = null
 ) {
 
+
     companion object {
         fun initial(): Context = Context(State.OP_START)
-    }
-
-    inline fun moveStateIf(
-        targetState: State,
-        predicate: () -> Boolean,
-        onError: () -> ParsingError
-    ): ParsingError? = if (predicate()) {
-        state = targetState
-        null
-    } else {
-        onError()
     }
 
     fun moveStateOnCh(targetState: State, actualCh: Char, targetCh: Char): ParsingError? {
@@ -100,7 +88,7 @@ class Context(
         if (targetCh.equals(actualCh, true)) {
             this.state = targetState
         } else {
-            error = UNKNOWN_COMMAND
+            error = INVALID_CLIENT_PROTOCOL
         }
 
         return error
@@ -142,6 +130,7 @@ class SuspendableParser(
         context.state = State.OP_START
         context.carriageReturnEncountered = false
         context.parsingArgs = false
+        context.readingBody = false
         bytesRead = 0
     }
 
@@ -162,9 +151,10 @@ class SuspendableParser(
 
             if (context.carriageReturnEncountered
                 && !context.parsingArgs
+                && !context.readingBody
                 && (opCh != CRLF_END || opCh == CRLF_BEGIN)
             ) {
-                result = INVALID_STRING_TERMINATION
+                result = INVALID_CLIENT_PROTOCOL
                 break
             }
 
@@ -191,7 +181,7 @@ class SuspendableParser(
                             null
                         }
 
-                        else -> UNKNOWN_COMMAND
+                        else -> INVALID_CLIENT_PROTOCOL
                     }
                 }
 
@@ -209,13 +199,13 @@ class SuspendableParser(
                             null
                         }
 
-                        else -> UNKNOWN_COMMAND
+                        else -> INVALID_CLIENT_PROTOCOL
                     }
                 }
 
                 context.state.isConnectOp() -> parseConnect(context, opCh, bytes)
 
-                context.state.isSubOp() -> parseSub(context, b, opCh, bytes)
+                context.state.isSubOp() -> parseSub(context, opCh, bytes)
 
                 context.state.isPubOp() -> parsePub(context, b, opCh, bytes)
 
@@ -236,11 +226,7 @@ class SuspendableParser(
         State.OP_PON -> context.moveStateOnCh(State.OP_PONG, opCh, 'g')
 
         State.OP_PONG -> when {
-            opCh == CRLF_BEGIN && context.carriageReturnEncountered -> {
-                INVALID_STRING_TERMINATION
-            }
-
-            opCh == CRLF_BEGIN -> {
+            opCh == CRLF_BEGIN && !context.carriageReturnEncountered -> {
                 context.carriageReturnEncountered = true
                 null
             }
@@ -249,7 +235,7 @@ class SuspendableParser(
                 PongOperation()
             }
 
-            else -> UNKNOWN_COMMAND
+            else -> INVALID_CLIENT_PROTOCOL
         }
 
         else -> error("Illegal state transition for PONG ${context.state}")
@@ -274,7 +260,7 @@ class SuspendableParser(
             opCh == CRLF_END && context.carriageReturnEncountered -> {
                 context.carriageReturnEncountered = false
                 if (context.argsBuffer!!.position() == 0) {
-                    MISSING_ARGUMENTS
+                    INVALID_CLIENT_PROTOCOL
                 } else {
                     context.state = stateAfterParsing
                     context.stateAfterParsedArgs = null
@@ -292,7 +278,7 @@ class SuspendableParser(
 
             else -> {
                 if (context.argsBuffer!!.capacity() == context.argsBuffer!!.position()) {
-                    MAX_ARG_SIZE_EXCEEDED
+                    MAXIMUM_PAYLOAD_VIOLATION
                 } else {
                     argsBuffer.put(byte)
                     null
@@ -336,7 +322,7 @@ class SuspendableParser(
 
             State.OP_CONNECT -> {
                 if (context.whitespaceAfterCommand == 0 && !opCh.isWhitespace()) {
-                    result = UNKNOWN_COMMAND
+                    result = INVALID_CLIENT_PROTOCOL
                 } else {
                     context.prepareForArgParsing(
                         State.OP_CONNECT_PARSED_ARGS,
@@ -348,7 +334,7 @@ class SuspendableParser(
             State.OP_CONNECT_PARSED_ARGS -> {
 
                 if (context.argsBuffer == null || context.argsBuffer!!.position() == 0) {
-                    result = MISSING_ARGUMENTS
+                    result = INVALID_CLIENT_PROTOCOL
                 } else {
                     context.argsBuffer!!.flip()
                     result = ConnectCommand(context.argsBuffer!!)
@@ -363,7 +349,6 @@ class SuspendableParser(
 
     private fun parseSub(
         context: Context,
-        byte: Byte,
         opCh: Char,
         bytes: ByteBuffer
     ): ParsingResult? {
@@ -381,7 +366,7 @@ class SuspendableParser(
 
             State.OP_SUB -> {
                 if (!opCh.isWhitespace() && context.whitespaceAfterCommand == 0) {
-                    result = ParsingError.UNKNOWN_COMMAND
+                    result = INVALID_CLIENT_PROTOCOL
                 } else {
                     context.prepareForArgParsing(State.OP_SUB_PARSED_ARGS) {
                         bufferFactory(
@@ -394,14 +379,14 @@ class SuspendableParser(
 
             State.OP_SUB_PARSED_ARGS -> {
                 if (context.argsBuffer == null || context.argsBuffer!!.position() == 0) {
-                    result = MISSING_ARGUMENTS
+                    result = INVALID_CLIENT_PROTOCOL
                 } else {
                     context.argsBuffer!!.flip()
                     result = SubscribeOperation(context.argsBuffer!!)
                 }
             }
 
-            else -> result = UNKNOWN_COMMAND
+            else -> result = INVALID_CLIENT_PROTOCOL
         }
 
         return result
@@ -412,85 +397,79 @@ class SuspendableParser(
         byte: Byte,
         opCh: Char,
         bytes: ByteBuffer
-    ): ParsingResult? {
-        var result: ParsingResult? = null
+    ): ParsingResult? = when {
+        context.state == State.OP_PU -> context.moveStateOnCh(
+            State.OP_PUB,
+            opCh, 'b'
+        )
 
-        when {
-            context.state == State.OP_PU -> context.moveStateOnCh(
-                State.OP_PUB,
-                opCh, 'b'
-            )
-
-            context.state == State.OP_PUB -> {
-                if (!opCh.isWhitespace() && context.whitespaceAfterCommand == 0) {
-                    result = UNKNOWN_COMMAND
-                } else {
-                    context.prepareForArgParsing(State.OP_PUB_PARSED_ARGS) {
-                        bufferFactory(
-                            maxArgSize
-                        )
-                    }
-                    bytes.position(bytes.position() - 1)
+        context.state == State.OP_PUB -> {
+            if (!opCh.isWhitespace() && context.whitespaceAfterCommand == 0) {
+                INVALID_CLIENT_PROTOCOL
+            } else {
+                context.prepareForArgParsing(State.OP_PUB_PARSED_ARGS) {
+                    bufferFactory(
+                        maxArgSize
+                    )
                 }
-            }
-
-            context.state == State.OP_PUB_PARSED_ARGS -> {
-                if (context.argsBuffer == null || context.argsBuffer!!.position() < 3) {
-                    // means doesnt have an int (for payload size) and at least 1 char for subject + whitespace
-                    MISSING_ARGUMENTS
-                } else {
-                    // we need to read last bytes as int to get payload size
-                    context.argsBuffer!!.flip()
-
-                    val payloadSize = readAsciiNumFromEnd(context.argsBuffer!!)
-
-                    if (payloadSize == null || payloadSize < 0 || payloadSize > maxPayloadSize) {
-                        INVALID_PAYLOAD_SIZE
-                    } else {
-                        var payloadBuffer = context.payloadBuffer ?: bufferFactory(payloadSize)
-
-                        if (payloadBuffer.limit() < payloadSize) {
-                            payloadBuffer = bufferFactory(payloadSize)
-                        }
-
-                        context.state = State.OP_PUB_READ_PAYLOAD
-                        context.payloadBuffer = payloadBuffer
-                    }
-                }
-
-            }
-
-            context.state == State.OP_PUB_READ_PAYLOAD -> {
-                val payloadBuffer = context.payloadBuffer ?: error("Payload buffer is not set")
-
-                if (opCh == CRLF_BEGIN) context.carriageReturnEncountered = true
-                else if (opCh == CRLF_END && context.carriageReturnEncountered) {
-
-                    if (payloadBuffer.position() != payloadBuffer.limit()) {
-                        result = INVALID_PAYLOAD_SIZE
-                    } else {
-                        payloadBuffer.flip()
-                        result = PublishOperation(context.argsBuffer!!, payloadBuffer)
-                    }
-                } else if (context.carriageReturnEncountered) {
-                    context.carriageReturnEncountered = false
-
-                    if (payloadBuffer.position() == payloadBuffer.limit()) {
-                        result = INVALID_PAYLOAD_SIZE
-                    } else {
-                        payloadBuffer.put(CRLF_BEGIN.code.toByte())
-                    }
-                } else {
-                    if (payloadBuffer.position() == payloadBuffer.limit()) {
-                        result = INVALID_PAYLOAD_SIZE
-                    } else {
-                        payloadBuffer.put(byte)
-                    }
-                }
+                // to read byte again (it's part of args)
+                bytes.position(bytes.position() - 1)
+                null
             }
         }
 
-        return result
+        context.state == State.OP_PUB_PARSED_ARGS -> {
+            if (context.argsBuffer == null || context.argsBuffer!!.position() < 3) {
+                // means doesnt have an int (for payload size) and at least 1 char for subject + whitespace
+                INVALID_CLIENT_PROTOCOL
+            } else {
+                // we need to read last bytes as int to get payload size
+                context.argsBuffer!!.flip()
+
+                val payloadSize = readAsciiNumFromEnd(context.argsBuffer!!)
+
+                if (payloadSize == null || payloadSize < 0 || payloadSize > maxPayloadSize) {
+                    MAXIMUM_PAYLOAD_VIOLATION
+                } else {
+                    var payloadBuffer = context.payloadBuffer ?: bufferFactory(payloadSize)
+
+                    if (payloadBuffer.limit() < payloadSize) {
+                        payloadBuffer = bufferFactory(payloadSize)
+                    }
+
+                    context.state = State.OP_PUB_READ_PAYLOAD
+                    context.readingBody = true
+                    context.payloadBuffer = payloadBuffer
+                    null
+                }
+            }
+
+        }
+
+        context.state == State.OP_PUB_READ_PAYLOAD -> {
+            val payloadBuffer = context.payloadBuffer ?: error("Payload buffer is not set")
+
+            when {
+                payloadBuffer.position() < payloadBuffer.limit() -> {
+                    payloadBuffer.put(byte)
+                    null
+                }
+
+                opCh == CRLF_BEGIN && !context.carriageReturnEncountered -> {
+                    context.carriageReturnEncountered = true
+                    null
+                }
+
+                opCh == CRLF_END && context.carriageReturnEncountered -> {
+                    payloadBuffer.flip()
+                    PublishOperation(context.argsBuffer!!, payloadBuffer)
+                }
+
+                else -> MAXIMUM_PAYLOAD_VIOLATION
+            }
+        }
+
+        else -> INVALID_CLIENT_PROTOCOL
     }
 
     private fun readAsciiNumFromEnd(bytes: ByteBuffer): Int? {

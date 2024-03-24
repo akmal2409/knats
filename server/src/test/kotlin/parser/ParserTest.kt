@@ -35,7 +35,7 @@ class ParserTest {
         val bytes = commandAsBytes("CONNECT \r\n")
         val parsingResult = defaultParser.tryParse(bytes)
 
-        assertEquals(ParsingError.MISSING_ARGUMENTS, parsingResult)
+        assertEquals(ParsingError.INVALID_CLIENT_PROTOCOL, parsingResult)
     }
 
     @Test
@@ -43,7 +43,7 @@ class ParserTest {
         val bytes = commandAsBytes("SOMETHING_ELSE")
         val parsingResult = defaultParser.tryParse(bytes)
 
-        assertEquals(ParsingError.UNKNOWN_COMMAND, parsingResult)
+        assertEquals(ParsingError.INVALID_CLIENT_PROTOCOL, parsingResult)
     }
 
     @Test
@@ -74,7 +74,7 @@ class ParserTest {
         val bytes = commandAsBytes("PUB $args\r\ntest\r\n")
         val result = defaultParser.tryParse(bytes)
 
-        assertEquals(ParsingError.INVALID_PAYLOAD_SIZE, result)
+        assertEquals(ParsingError.MAXIMUM_PAYLOAD_VIOLATION, result)
     }
 
     @Test
@@ -83,7 +83,7 @@ class ParserTest {
         val bytes = commandAsBytes("PUB $args\r\ntest\r\n")
         val result = defaultParser.tryParse(bytes)
 
-        assertEquals(ParsingError.INVALID_PAYLOAD_SIZE, result)
+        assertEquals(ParsingError.MAXIMUM_PAYLOAD_VIOLATION, result)
     }
 
     @Test
@@ -97,11 +97,20 @@ class ParserTest {
     }
 
     @Test
+    fun `Parses payload with CRLF inside`() {
+        val bytes = commandAsBytes("PUB sub1 2\r\n\r\n\r\n")
+        val result = defaultParser.tryParse(bytes)
+
+        assertIs<PublishOperation>(result)
+        assertEquals("\r\n", result.payloadBuffer.remainingAsString())
+    }
+
+    @Test
     fun `Returns error if arguments are missing for SUB`() {
         val bytes = commandAsBytes("SUB \r\n")
         val result = defaultParser.tryParse(bytes)
 
-        assertEquals(ParsingError.MISSING_ARGUMENTS, result)
+        assertEquals(ParsingError.INVALID_CLIENT_PROTOCOL, result)
     }
 
     @Test
