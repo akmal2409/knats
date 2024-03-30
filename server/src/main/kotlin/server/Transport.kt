@@ -244,8 +244,12 @@ class ClientHandler<IN, OUT>(
                         return
                     }
 
-                    clientMeta.readBuffer.clear()
-
+                    if (clientMeta.readBuffer.hasRemaining()) {
+                        // wasn't read fullly, we need to shift everything what hasn't been read to the start
+                        clientMeta.readBuffer.compact()
+                    } else {
+                        clientMeta.readBuffer.clear()
+                    }
 
                     when (partialResult) {
                         is DeserializationResult.AvailableResult<IN> -> {
