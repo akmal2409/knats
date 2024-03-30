@@ -23,11 +23,22 @@ class ParserTest {
         val bytes = commandAsBytes("CONNECT $expectedArgs\r\n")
         val parsingResult = defaultParser.tryParse(bytes)
 
-        assertIs<ConnectCommand>(parsingResult)
+        assertIs<ConnectOperation>(parsingResult)
 
         val args = parsingResult.argsBuffer.remainingAsString(Charsets.US_ASCII)
 
         assertEquals(expectedArgs, args)
+    }
+
+    @Test
+    fun `Parses Connect string without arguments`() {
+        val bytes = commandAsBytes("CONNECT {}\r\n")
+        val parsingResult = defaultParser.tryParse(bytes)
+
+        assertIs<ConnectOperation>(parsingResult)
+        val args = parsingResult.argsBuffer.remainingAsString(Charsets.US_ASCII)
+
+        assertEquals("{}", args)
     }
 
     @Test
