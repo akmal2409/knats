@@ -1,7 +1,8 @@
 package io.github.akmal2409.nats.server.parser
 
+import io.github.akmal2409.nats.server.common.toAsciiChar
 import java.nio.ByteBuffer
-import parser.ConnectCommand
+import parser.ConnectOperation
 import parser.ParsingError
 import parser.ParsingError.Companion.INVALID_CLIENT_PROTOCOL
 import parser.ParsingError.Companion.MAXIMUM_PAYLOAD_VIOLATION
@@ -337,7 +338,7 @@ class SuspendableParser(
                     result = INVALID_CLIENT_PROTOCOL
                 } else {
                     context.argsBuffer!!.flip()
-                    result = ConnectCommand(context.argsBuffer!!)
+                    result = ConnectOperation(context.argsBuffer!!)
                 }
             }
 
@@ -496,4 +497,3 @@ class SuspendableParser(
 }
 
 
-private fun Byte.toAsciiChar() = (this.toInt() and 0xff).toChar()

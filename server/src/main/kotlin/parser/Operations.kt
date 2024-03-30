@@ -14,7 +14,7 @@ data class ParsingError(val reason: String, val throwable: Throwable? = null) : 
     }
 }
 
-class ConnectCommand(val argsBuffer: ByteBuffer) : ParsingResult {
+class ConnectOperation(val argsBuffer: ByteBuffer) : ParsingResult {
 
     override fun toString(): String = argsBuffer.remainingAsString()
 }
