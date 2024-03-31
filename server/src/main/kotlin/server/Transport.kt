@@ -40,16 +40,16 @@ data class ClientRequest<T>(
 
 private val logger = KotlinLogging.logger {}
 
-private data class ClientChannelMetadata<IN>(
+internal data class ClientChannelMetadata<IN>(
     val clientKey: ClientKey,
     val readBuffer: ByteBuffer,
-    var deserializer: RequestDeserializer<IN>?
+    var deserializer: RequestDeserializer<IN>? = null
 )
 
-private class ClientMessage(val bytes: ByteBuffer, val clientKey: ClientKey)
-private class ClientBuffer(val queue: Queue<ByteBuffer>, var totalSize: Int)
+internal class ClientMessage(val bytes: ByteBuffer, val clientKey: ClientKey)
+internal class ClientBuffer(val queue: Queue<ByteBuffer>, var totalSize: Int)
 
-private class ResponseWriterLoop<IN, OUT>(
+internal class ResponseWriterLoop<IN, OUT>(
     val registry: ClientRegistry<IN, OUT>,
     val messageBytesQueue: ConcurrentLinkedQueue<ClientMessage>,
     val maxProcessingCount: Int = 100,
@@ -148,8 +148,7 @@ private class ResponseWriterLoop<IN, OUT>(
 
 }
 
-private fun <K> clientErrorDefaultHandler(): (K, SelectionKey, Throwable) -> Unit = { _, _, _ ->
-}
+private fun <K> clientErrorDefaultHandler(): (K, SelectionKey, Throwable) -> Unit = { _, _, _ -> }
 
 /**
  * Class that handles logic of accepting new clients and reading from client socket

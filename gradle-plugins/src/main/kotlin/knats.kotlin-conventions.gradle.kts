@@ -12,10 +12,14 @@ repositories {
     mavenCentral()
 }
 
+val kotestVersion = "5.8.0"
+
 dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.3")
     implementation("io.github.oshai:kotlin-logging-jvm:5.1.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("io.kotest:kotest-assertions-core:$kotestVersion")
+    testImplementation("io.kotest:kotest-property:$kotestVersion")
 }
 
 tasks.test {
