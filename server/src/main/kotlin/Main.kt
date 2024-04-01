@@ -54,6 +54,7 @@ object Handler : ConnectionHandler<Request, ByteBuffer> {
                         logger.info { "Received request $request" }
 
                         emit(convertToResponse(PingResponse))
+                        emit(mockText())
                     }
 
 //                    pingChannel.onReceive {
@@ -73,6 +74,18 @@ object Handler : ConnectionHandler<Request, ByteBuffer> {
             logger.error(ex) { "Error in flow" }
             throw ex
         }.onEach { logger.info { "Emitting response $it" } }
+    }
+
+    private fun mockText(): ByteBuffer {
+        val someText = buildString {
+            repeat(10000) {
+                appendLine("THIS is a very long text that will span many many lines")
+            }
+        }
+        return ByteBuffer.wrap("""
+            $someText
+            Hey there pretty
+        """.trimIndent().toByteArray(Charsets.UTF_32))
     }
 
 

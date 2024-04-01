@@ -47,7 +47,111 @@ internal data class ClientChannelMetadata<IN>(
 )
 
 internal class ClientMessage(val bytes: ByteBuffer, val clientKey: ClientKey)
-internal class ClientBuffer(val queue: Queue<ByteBuffer>, var totalSize: Int)
+internal class ClientBuffer(val queue: Queue<ByteBuffer>, var totalSize: Int,
+    var registeredWithSelector: Boolean = false)
+
+internal class ResponseWriter<IN, OUT>(
+    private val clientQueuedMessages: MutableMap<ClientKey, ClientBuffer>,
+    private val messageBytesQueue: ConcurrentLinkedQueue<ClientMessage>,
+    private val registry: ClientRegistry<IN, OUT>,
+    private val maxInFlightMessages: Int = 1000,
+    private val maxConsumerBufferSize: Int = 10 * 1024 * 1024
+) {
+
+    private var currentInFlightMessages = 0
+
+    /**
+     * Method should be invoked in a loop that processes 1 message from a queue and
+     * attempts to send other queued messages
+     */
+    fun sendResponses() {
+
+        if (currentInFlightMessages < maxInFlightMessages) {
+            pollNextResponse()
+        }
+
+        for ((clientKey, buffer) in clientQueuedMessages) {
+            if (buffer.registeredWithSelector) continue
+
+            val client = registry[clientKey]
+
+            if (client == null) {
+
+                val droppedBuffer = clientQueuedMessages.remove(clientKey)
+                currentInFlightMessages -= droppedBuffer?.queue?.size ?: 0
+
+                logger.debug { "Dropping client buffer of size ${buffer.totalSize} because no entry in registry for key $clientKey" }
+            } else {
+                sendResponseToClient(client.socketChannel, clientKey)
+            }
+        }
+    }
+
+    /**
+     * Takes messages from response queue and enqueues byte buffers for clients
+     */
+    private fun pollNextResponse() {
+        val queuedMessage: ClientMessage? = messageBytesQueue.poll()
+
+        queuedMessage?.let {
+            currentInFlightMessages++
+            val clientBufferSize = clientQueuedMessages[it.clientKey]?.totalSize ?: 0
+
+            if (clientBufferSize > maxConsumerBufferSize) {
+                // TODO: Kill slow consumer, add threshold to notify first
+            } else {
+                logger.info { "Adding message to buffer for client ${queuedMessage.clientKey}" }
+
+                val clientBuffer =
+                    clientQueuedMessages[queuedMessage.clientKey] ?: ClientBuffer(
+                        LinkedList(),
+                        0
+                    )
+
+                clientBuffer.queue.offer(queuedMessage.bytes)
+                clientBuffer.totalSize += queuedMessage.bytes.remaining()
+
+                clientQueuedMessages[queuedMessage.clientKey] = clientBuffer
+            }
+        }
+    }
+
+    private fun sendResponseToClient(channel: SocketChannel, clientKey: ClientKey) {
+        val clientBuffer = clientQueuedMessages[clientKey]
+
+        clientBuffer?.let {
+            val byteBuffer = clientBuffer.queue.peek()
+
+            // TODO: error handling
+            val bytesLeft = byteBuffer.remaining()
+            val bytesWritten = channel.write(byteBuffer)
+            val actualBytesWritten = bytesLeft - byteBuffer.remaining() // we can't trust .write() result
+
+            clientBuffer.totalSize -= actualBytesWritten
+
+            if (actualBytesWritten > 0) {
+                logger.info { "Written $actualBytesWritten to the client key=$clientKey" }
+            }
+
+            if (bytesWritten == 0 && !clientBuffer.registeredWithSelector) {
+                logger.info { "System buffer is full will attempt to send again remaining bytes remaining=${clientBuffer.totalSize} to client key $clientKey" }
+            }
+
+            if (!byteBuffer.hasRemaining()) {
+                clientBuffer.queue.poll()
+
+                currentInFlightMessages--
+
+                if (clientBuffer.queue.isEmpty()) {
+                    clientQueuedMessages.remove(clientKey)
+                    logger.info { "Drained whole buffer for client key=$clientKey" }
+                }
+            }
+
+        }
+
+    }
+}
 
 internal class ResponseWriterLoop<IN, OUT>(
     val registry: ClientRegistry<IN, OUT>,
@@ -62,85 +166,10 @@ internal class ResponseWriterLoop<IN, OUT>(
 
         val selector = Selector.open()
 
+        val writer = ResponseWriter(clientQueuedMessages, messageBytesQueue, registry)
+
         while (!Thread.currentThread().isInterrupted && selector.isOpen) {
-            val selectedKeys = selector.selectedKeys()
-
-            if (selectedKeys.size < maxProcessingCount) {
-                val queuedMessage = try {
-                    messageBytesQueue.remove()
-                } catch (ex: NoSuchElementException) {
-                    null
-                }
-
-                queuedMessage?.let {
-                    val client = registry[queuedMessage.clientKey] ?: return@let
-
-                    val existingBuffer = clientQueuedMessages.containsKey(queuedMessage.clientKey)
-                    val clientBufferSize = clientQueuedMessages[it.clientKey]?.totalSize ?: 0
-
-                    if (clientBufferSize > maxConsumerBufferSize) {
-                        // TODO: Kill slow consumer, add threshold to notify first
-                    } else {
-                        logger.info { "Adding message to buffer for client ${queuedMessage.clientKey}" }
-
-                        val clientBuffer =
-                            clientQueuedMessages[queuedMessage.clientKey] ?: ClientBuffer(
-                                LinkedList(),
-                                0
-                            )
-
-
-                        clientBuffer.queue.offer(queuedMessage.bytes)
-                        clientBuffer.totalSize += queuedMessage.bytes.capacity()
-
-                        if (!existingBuffer) {
-                            logger.info { "Registering client for write" }
-                            // register for writing
-                            val bytesRead = client.socketChannel.write(queuedMessage.bytes)
-
-                            if (!queuedMessage.bytes.hasRemaining()) {
-
-                                clientBuffer.totalSize -= bytesRead
-                                client.socketChannel.register(selector, SelectionKey.OP_WRITE)
-                                    .attach(client.key)
-                            }
-                        }
-                    }
-                }
-            }
-
-            for (selectedKey in selectedKeys) {
-                logger.info { "Channel is ready to be written to" }
-                val clientKey = selectedKey.attachment() as ClientKey? ?: continue
-                val channel = selectedKey.channel() as SocketChannel
-                val clientBuffer = clientQueuedMessages[clientKey]
-
-                if (clientBuffer == null || clientBuffer.queue.isEmpty()) {
-                    if (clientBuffer?.queue?.isEmpty() == true) {
-                        clientQueuedMessages.remove(clientKey)
-                    }
-                    selectedKey.cancel()
-                } else if (clientBuffer.queue.size == 1 && !clientBuffer.queue.peek()
-                        .hasRemaining()
-                ) {
-                    clientQueuedMessages.remove(clientKey)
-                    selectedKey.cancel()
-                } else {
-                    val byteBuffer = clientBuffer.queue.peek()
-
-                    // TODO: error handling
-                    channel.write(byteBuffer)
-
-                    if (!byteBuffer.hasRemaining()) {
-                        clientBuffer.queue.poll()
-                        clientBuffer.totalSize -= byteBuffer.capacity()
-
-                        if (clientBuffer.queue.isEmpty()) {
-                            clientQueuedMessages.remove(clientKey)
-                        }
-                    }
-                }
-            }
+            writer.sendResponses()
         }
 
         logger.info { "Shutting down writer" }
@@ -348,6 +377,8 @@ class Transport<IN, OUT>(
                 logger.error(closed) { "Selector is closed with reason $closed" }
             } catch (ioEx: IOException) {
                 logger.error(ioEx) { "IOException happened while selecting" }
+            } catch (uncaught: Throwable) {
+                logger.error(uncaught) { "Uncaught error in channels" }
             }
         }
 
