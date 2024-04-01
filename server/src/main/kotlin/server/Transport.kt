@@ -155,12 +155,12 @@ private fun <K> clientErrorDefaultHandler(): (K, SelectionKey, Throwable) -> Uni
  * when its available
  */
 class ClientHandler<IN, OUT>(
-    private val registry: ClientRegistry<IN, OUT>,
     private val bufferFactory: () -> ByteBuffer,
     private val connectionHandler: ConnectionHandler<IN, OUT>,
     private val coroutineScope: CoroutineScope,
     private val onResponse: suspend (ClientKey, OUT) -> Unit,
     private val onParsed: (ClientKey, IN) -> Unit,
+    private val onClientRegistered: (Client<IN, OUT>) -> Unit,
     private val requestDeserializerFactory: () -> RequestDeserializer<IN>,
     private val onRequestError: (ClientKey?, SelectionKey, Throwable) -> Unit = clientErrorDefaultHandler(),
     private val onResponseError: (ClientKey, SelectionKey, Throwable) -> Unit = clientErrorDefaultHandler()
@@ -191,14 +191,13 @@ class ClientHandler<IN, OUT>(
         )
 
         val metadata = ClientChannelMetadata<IN>(
-            client.key, bufferFactory(), null
+            client.key, bufferFactory()
         )
 
         responseChannel.consumeAsFlow()
             .onEach { response -> onResponse(client.key, response) }
             .catch { ex ->
                 onResponseError(client.key, selectionKey, ex)
-
             }.launchIn(coroutineScope)
 
         clientChannel.register(readSelector, SelectionKey.OP_READ)
@@ -206,7 +205,7 @@ class ClientHandler<IN, OUT>(
 
         logger.info { "Accepted connection from ${clientChannel.remoteAddress}" }
 
-        registry[client.key] = client
+        onClientRegistered(client)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -324,13 +323,13 @@ class Transport<IN, OUT>(
         )
 
         val clientHandler = ClientHandler<IN, OUT>(
-            registry = registry,
             connectionHandler = connectionHandler, // binding that is provided by the client of the transport
             // it receives complete parsed requests and return responses
             coroutineScope = coroutineScope,
             bufferFactory = { ByteBuffer.allocateDirect(bufferSize) },
             onParsed = ::onRequestParsed,
             onResponse = ::onResponse,
+            onClientRegistered = { registry[it.key] = it },
             requestDeserializerFactory = requestDeserializerFactory,
             onRequestError = ::onRequestError,
             onResponseError = ::onResponseError

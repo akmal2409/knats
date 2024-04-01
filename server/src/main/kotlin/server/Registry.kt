@@ -47,7 +47,7 @@ private class InMemoryClientRegistry<IN, OUT> : ClientRegistry<IN, OUT> {
 
     override fun set(clientKey: ClientKey, client: Client<IN, OUT>) {
         clientRegistryLogger.debug { "Added new client $client" }
-        connectedClients.put(client.key, client)
+        connectedClients[client.key] = client
     }
 
     override fun remove(clientKey: ClientKey) = connectedClients.remove(clientKey).apply {
