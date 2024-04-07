@@ -1,14 +1,14 @@
-package server
+package transport
 
-import common.remainingAsString
-import io.github.akmal2409.nats.server.server.Client
-import io.github.akmal2409.nats.server.server.ClientChannelMetadata
-import io.github.akmal2409.nats.server.server.ClientHandler
-import io.github.akmal2409.nats.server.server.ClientKey
-import io.github.akmal2409.nats.server.server.ClientRegistry
-import io.github.akmal2409.nats.server.server.ConnectionHandler
-import io.github.akmal2409.nats.server.server.DeserializationResult
-import io.github.akmal2409.nats.server.server.RequestDeserializer
+import io.github.akmal2409.nats.transport.Client
+import io.github.akmal2409.nats.transport.ClientChannelMetadata
+import io.github.akmal2409.nats.transport.ClientHandler
+import io.github.akmal2409.nats.transport.ClientKey
+import io.github.akmal2409.nats.transport.ClientRegistry
+import io.github.akmal2409.nats.transport.ConnectionHandler
+import io.github.akmal2409.nats.transport.DeserializationResult
+import io.github.akmal2409.nats.transport.RequestDeserializer
+import io.github.akmal2409.nats.transport.common.remainingAsString
 import io.kotest.assertions.withClue
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
