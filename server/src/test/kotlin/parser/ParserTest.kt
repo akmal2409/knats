@@ -1,8 +1,14 @@
 package parser
 
-import common.remainingAsString
+import io.github.akmal2409.nats.server.parser.ConnectOperation
 import io.github.akmal2409.nats.server.parser.ConnectOptions
+import io.github.akmal2409.nats.server.parser.ParsingError
+import io.github.akmal2409.nats.server.parser.PendingParsing
+import io.github.akmal2409.nats.server.parser.PongOperation
+import io.github.akmal2409.nats.server.parser.PublishOperation
+import io.github.akmal2409.nats.server.parser.SubscribeOperation
 import io.github.akmal2409.nats.server.parser.SuspendableParser
+import io.github.akmal2409.nats.transport.common.remainingAsString
 import java.nio.ByteBuffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
