@@ -1,4 +1,4 @@
-package io.github.akmal2409.nats.server.server
+package io.github.akmal2409.nats.transport
 
 import java.net.InetSocketAddress
 import java.net.ProtocolFamily

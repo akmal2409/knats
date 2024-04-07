@@ -1,6 +1,6 @@
 package parser
 
-import io.github.akmal2409.nats.server.common.remainingAsString
+import common.remainingAsString
 import io.github.akmal2409.nats.server.parser.ConnectOptions
 import io.github.akmal2409.nats.server.parser.SuspendableParser
 import java.nio.ByteBuffer

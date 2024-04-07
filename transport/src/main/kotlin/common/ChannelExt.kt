@@ -1,4 +1,4 @@
-package io.github.akmal2409.nats.server.common
+package io.github.akmal2409.nats.transport.common
 
 import java.nio.channels.Channel
 

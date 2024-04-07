@@ -1,4 +1,4 @@
-package io.github.akmal2409.nats.server.server
+package io.github.akmal2409.nats.transport
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.channels.SocketChannel
@@ -42,7 +42,7 @@ interface ClientRegistry<IN, OUT> {
 
 fun <IN, OUT> inMemoryClientRegistry(): ClientRegistry<IN, OUT> = InMemoryClientRegistry()
 
-private class InMemoryClientRegistry<IN, OUT> : ClientRegistry<IN, OUT> {
+internal class InMemoryClientRegistry<IN, OUT> : ClientRegistry<IN, OUT> {
     private val connectedClients = ConcurrentHashMap<ClientKey, Client<IN, OUT>>()
 
     override fun set(clientKey: ClientKey, client: Client<IN, OUT>) {

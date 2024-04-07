@@ -1,11 +1,13 @@
-package io.github.akmal2409.nats.server.server
+package io.github.akmal2409.nats.server
 
-import io.github.akmal2409.nats.server.common.nextAsciiToken
+
+import io.github.akmal2409.nats.server.parser.ConnectOperation
+import io.github.akmal2409.nats.server.parser.ParsingResult
+import io.github.akmal2409.nats.server.parser.PongOperation
+import io.github.akmal2409.nats.server.parser.SubscribeOperation
+import io.github.akmal2409.nats.transport.common.nextAsciiToken
 import java.nio.ByteBuffer
-import parser.ConnectOperation
-import parser.ParsingResult
-import parser.PongOperation
-import parser.SubscribeOperation
+
 
 sealed interface Request
 

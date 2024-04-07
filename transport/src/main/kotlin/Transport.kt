@@ -1,6 +1,6 @@
-package io.github.akmal2409.nats.server.server
+package io.github.akmal2409.nats.transport
 
-import io.github.akmal2409.nats.server.common.closeAndIgnore
+import io.github.akmal2409.nats.transport.common.closeAndIgnore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.net.InetAddress
@@ -185,7 +185,7 @@ private fun <K> clientErrorDefaultHandler(): (K, SelectionKey, Throwable) -> Uni
  * Class that handles logic of accepting new clients and reading from client socket
  * when its available
  */
-class ClientHandler<IN, OUT>(
+internal class ClientHandler<IN, OUT>(
     private val bufferFactory: () -> ByteBuffer,
     private val connectionHandler: ConnectionHandler<IN, OUT>,
     private val coroutineScope: CoroutineScope,

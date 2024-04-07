@@ -13,6 +13,7 @@ repositories {
 }
 
 val kotestVersion = "5.8.0"
+val mockkVersion = "1.13.10"
 
 dependencies {
     implementation("ch.qos.logback:logback-classic:1.5.3")
@@ -20,6 +21,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("io.kotest:kotest-assertions-core:$kotestVersion")
     testImplementation("io.kotest:kotest-property:$kotestVersion")
+    testImplementation("io.mockk:mockk:$mockkVersion")
 }
 
 tasks.test {

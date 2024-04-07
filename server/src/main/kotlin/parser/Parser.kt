@@ -1,16 +1,9 @@
 package io.github.akmal2409.nats.server.parser
 
-import io.github.akmal2409.nats.server.common.toAsciiChar
+import io.github.akmal2409.nats.transport.common.toAsciiChar
 import java.nio.ByteBuffer
-import parser.ConnectOperation
-import parser.ParsingError
-import parser.ParsingError.Companion.INVALID_CLIENT_PROTOCOL
-import parser.ParsingError.Companion.MAXIMUM_PAYLOAD_VIOLATION
-import parser.ParsingResult
-import parser.PendingParsing
-import parser.PongOperation
-import parser.PublishOperation
-import parser.SubscribeOperation
+import io.github.akmal2409.nats.server.parser.ParsingError.Companion.INVALID_CLIENT_PROTOCOL
+import io.github.akmal2409.nats.server.parser.ParsingError.Companion.MAXIMUM_PAYLOAD_VIOLATION
 
 
 /**

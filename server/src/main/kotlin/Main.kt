@@ -1,18 +1,16 @@
 package io.github.akmal2409.nats.server
 
-import io.github.akmal2409.nats.server.common.scopedFlow
+import io.github.akmal2409.nats.server.parser.ParsingError
+import io.github.akmal2409.nats.server.parser.PendingParsing
 import io.github.akmal2409.nats.server.parser.SuspendableParser
-import io.github.akmal2409.nats.server.server.ClientRequest
-import io.github.akmal2409.nats.server.server.ConnectionHandler
-import io.github.akmal2409.nats.server.server.DeserializationResult
-import io.github.akmal2409.nats.server.server.NioTcpServerSocketChannelFactory
-import io.github.akmal2409.nats.server.server.PingResponse
-import io.github.akmal2409.nats.server.server.Request
-import io.github.akmal2409.nats.server.server.RequestDeserializer
-import io.github.akmal2409.nats.server.server.SelectorFactoryImpl
-import io.github.akmal2409.nats.server.server.Transport
-import io.github.akmal2409.nats.server.server.convertToRequest
-import io.github.akmal2409.nats.server.server.convertToResponse
+import io.github.akmal2409.nats.transport.ClientRequest
+import io.github.akmal2409.nats.transport.ConnectionHandler
+import io.github.akmal2409.nats.transport.DeserializationResult
+import io.github.akmal2409.nats.transport.NioTcpServerSocketChannelFactory
+import io.github.akmal2409.nats.transport.RequestDeserializer
+import io.github.akmal2409.nats.transport.SelectorFactoryImpl
+import io.github.akmal2409.nats.transport.Transport
+import io.github.akmal2409.nats.transport.common.scopedFlow
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
@@ -27,8 +25,6 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.selects.select
-import parser.ParsingError
-import parser.PendingParsing
 
 class ScheduledPing(
     val timeoutReached: Boolean = false

@@ -1,6 +1,6 @@
-package parser;
+package io.github.akmal2409.nats.server.parser;
 
-import io.github.akmal2409.nats.server.common.remainingAsString
+import io.github.akmal2409.nats.transport.common.remainingAsString
 import java.nio.ByteBuffer;
 
 sealed interface ParsingResult

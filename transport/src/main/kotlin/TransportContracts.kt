@@ -1,4 +1,4 @@
-package io.github.akmal2409.nats.server.server
+package io.github.akmal2409.nats.transport
 
 import java.nio.ByteBuffer
 import kotlinx.coroutines.flow.Flow

@@ -1,6 +1,6 @@
 package server
 
-import io.github.akmal2409.nats.server.common.remainingAsString
+import common.remainingAsString
 import io.github.akmal2409.nats.server.server.Client
 import io.github.akmal2409.nats.server.server.ClientBuffer
 import io.github.akmal2409.nats.server.server.ClientKey
