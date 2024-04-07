@@ -1,2 +1,2 @@
 # knats
-Kotlin based implementation of NATS server and client
+Kotlin based implementation of NATS transport, server and client

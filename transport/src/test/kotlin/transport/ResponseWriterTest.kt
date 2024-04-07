@@ -1,13 +1,13 @@
-package server
+package transport
 
-import common.remainingAsString
-import io.github.akmal2409.nats.server.server.Client
-import io.github.akmal2409.nats.server.server.ClientBuffer
-import io.github.akmal2409.nats.server.server.ClientKey
-import io.github.akmal2409.nats.server.server.ClientMessage
-import io.github.akmal2409.nats.server.server.ClientRegistry
-import io.github.akmal2409.nats.server.server.ResponseWriter
-import io.github.akmal2409.nats.server.server.inMemoryClientRegistry
+import io.github.akmal2409.nats.transport.Client
+import io.github.akmal2409.nats.transport.ClientBuffer
+import io.github.akmal2409.nats.transport.ClientKey
+import io.github.akmal2409.nats.transport.ClientMessage
+import io.github.akmal2409.nats.transport.ClientRegistry
+import io.github.akmal2409.nats.transport.ResponseWriter
+import io.github.akmal2409.nats.transport.common.remainingAsString
+import io.github.akmal2409.nats.transport.inMemoryClientRegistry
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.ints.shouldBeExactly
