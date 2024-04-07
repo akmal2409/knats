@@ -11,7 +11,7 @@ import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
-import java.util.LinkedList
+import java.util.ArrayDeque
 import java.util.Queue
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicReference
@@ -47,8 +47,11 @@ internal data class ClientChannelMetadata<IN>(
 )
 
 internal class ClientMessage(val bytes: ByteBuffer, val clientKey: ClientKey)
-internal class ClientBuffer(val queue: Queue<ByteBuffer>, var totalSize: Int,
-    var registeredWithSelector: Boolean = false)
+internal class ClientBuffer(
+    val queue: Queue<ByteBuffer>,
+    var totalSize: Int = 0,
+    var droppedMessages: Int = 0
+)
 
 internal class ResponseWriter<IN, OUT>(
     private val clientQueuedMessages: MutableMap<ClientKey, ClientBuffer>,
@@ -66,12 +69,11 @@ internal class ResponseWriter<IN, OUT>(
      */
     fun sendResponses() {
 
-        if (currentInFlightMessages < maxInFlightMessages) {
+        while (currentInFlightMessages < maxInFlightMessages && messageBytesQueue.isNotEmpty()) {
             pollNextResponse()
         }
 
         for ((clientKey, buffer) in clientQueuedMessages) {
-            if (buffer.registeredWithSelector) continue
 
             val client = registry[clientKey]
 
@@ -95,18 +97,18 @@ internal class ResponseWriter<IN, OUT>(
 
         queuedMessage?.let {
             currentInFlightMessages++
-            val clientBufferSize = clientQueuedMessages[it.clientKey]?.totalSize ?: 0
+            val clientBuffer = clientQueuedMessages[it.clientKey]
+                ?: ClientBuffer(ArrayDeque())
+
+            val clientBufferSize = clientBuffer.totalSize
 
             if (clientBufferSize > maxConsumerBufferSize) {
                 // TODO: Kill slow consumer, add threshold to notify first
+                logger.warn { "Dropping message for consumer client key=${it.clientKey} because buffer is overflown" }
+
+                clientBuffer.droppedMessages++
             } else {
                 logger.info { "Adding message to buffer for client ${queuedMessage.clientKey}" }
-
-                val clientBuffer =
-                    clientQueuedMessages[queuedMessage.clientKey] ?: ClientBuffer(
-                        LinkedList(),
-                        0
-                    )
 
                 clientBuffer.queue.offer(queuedMessage.bytes)
                 clientBuffer.totalSize += queuedMessage.bytes.remaining()
@@ -125,7 +127,8 @@ internal class ResponseWriter<IN, OUT>(
             // TODO: error handling
             val bytesLeft = byteBuffer.remaining()
             val bytesWritten = channel.write(byteBuffer)
-            val actualBytesWritten = bytesLeft - byteBuffer.remaining() // we can't trust .write() result
+            val actualBytesWritten =
+                bytesLeft - byteBuffer.remaining() // we can't trust .write() result
 
             clientBuffer.totalSize -= actualBytesWritten
 
@@ -133,7 +136,7 @@ internal class ResponseWriter<IN, OUT>(
                 logger.info { "Written $actualBytesWritten to the client key=$clientKey" }
             }
 
-            if (bytesWritten == 0 && !clientBuffer.registeredWithSelector) {
+            if (bytesWritten == 0) {
                 logger.info { "System buffer is full will attempt to send again remaining bytes remaining=${clientBuffer.totalSize} to client key $clientKey" }
             }
 
@@ -156,7 +159,7 @@ internal class ResponseWriter<IN, OUT>(
 internal class ResponseWriterLoop<IN, OUT>(
     val registry: ClientRegistry<IN, OUT>,
     val messageBytesQueue: ConcurrentLinkedQueue<ClientMessage>,
-    val maxProcessingCount: Int = 100,
+    val maxInFlightMessages: Int = 1000,
     val maxConsumerBufferSize: Int = 10 * 1024 * 1024 // 10MB
 ) {
 
@@ -164,11 +167,10 @@ internal class ResponseWriterLoop<IN, OUT>(
 
     fun run() {
 
-        val selector = Selector.open()
+        val writer = ResponseWriter(clientQueuedMessages, messageBytesQueue, registry, maxInFlightMessages,
+            maxConsumerBufferSize)
 
-        val writer = ResponseWriter(clientQueuedMessages, messageBytesQueue, registry)
-
-        while (!Thread.currentThread().isInterrupted && selector.isOpen) {
+        while (!Thread.currentThread().isInterrupted) {
             writer.sendResponses()
         }
 
