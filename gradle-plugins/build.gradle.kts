@@ -2,7 +2,7 @@ repositories {
     gradlePluginPortal()
 }
 
-val kotlinVersion = "1.9.23"
+val kotlinVersion = "2.0.0-RC1"
 
 plugins {
     `kotlin-dsl`
