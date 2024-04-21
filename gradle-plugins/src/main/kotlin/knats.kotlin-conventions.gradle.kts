@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    id("io.gitlab.arturbosch.detekt")
 }
 
 kotlin {
@@ -26,4 +27,9 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+
+detekt {
+    config.from(file(rootDir.resolve("config/detekt/detekt.yml")))
 }
