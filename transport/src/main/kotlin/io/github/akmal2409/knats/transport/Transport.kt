@@ -233,14 +233,15 @@ internal class ClientHandler<IN, OUT>(
             client.key, bufferFactory()
         )
 
+        val readSelectionKey = clientChannel.register(readSelector, SelectionKey.OP_READ).apply {
+            attach(metadata)
+        }
+
         responseChannel.consumeAsFlow()
             .onEach { response -> onResponse(client.key, response) }
             .catch { ex ->
-                onResponseError(client.key, selectionKey, ex)
+                onResponseError(client.key, readSelectionKey, ex)
             }.launchIn(coroutineScope)
-
-        clientChannel.register(readSelector, SelectionKey.OP_READ)
-            .attach(metadata)
 
         logger.info { "Accepted connection from ${clientChannel.remoteAddress}" }
 
@@ -291,6 +292,7 @@ internal class ClientHandler<IN, OUT>(
                     when (partialResult) {
                         is DeserializationResult.AvailableResult<IN> -> {
                             onParsed(clientMeta.clientKey, partialResult.value)
+                            clientMeta.deserializer?.close()
                             clientMeta.deserializer = requestDeserializerFactory()
                         }
 
@@ -351,7 +353,7 @@ class Transport<IN, OUT>(
             responseCollector()
         }
 
-        val writer = ResponseWriterLoop<IN, OUT>(registry, messageByteQueue)
+        val writer = ResponseWriterLoop(registry, messageByteQueue)
         writeLoopThread.set(
             thread(
                 start = true,
@@ -361,7 +363,7 @@ class Transport<IN, OUT>(
             )
         )
 
-        val clientHandler = ClientHandler<IN, OUT>(
+        val clientHandler = ClientHandler(
             connectionHandler = connectionHandler, // binding that is provided by the client of the transport
             // it receives complete parsed requests and return responses
             coroutineScope = coroutineScope,
@@ -375,20 +377,23 @@ class Transport<IN, OUT>(
         )
 
         while (!Thread.currentThread().isInterrupted && selector.isOpen) {
+
             try {
-                selector.select { selectionKey ->
-                    if (selectionKey.isAcceptable) {
-                        clientHandler.onAccept(selectionKey, selector)
-                    } else if (selectionKey.isReadable) {
-                        clientHandler.onRead(selectionKey)
+                selector.selectNow { selectionKey ->
+                    try {
+                        if (selectionKey.isAcceptable) {
+                            clientHandler.onAccept(selectionKey, selector)
+                        } else if (selectionKey.isReadable) {
+                            clientHandler.onRead(selectionKey)
+                        }
+                    } catch (uncaught: Throwable) {
+                        logger.error(uncaught) { "Uncaught error in channels" }
                     }
                 }
             } catch (closed: ClosedSelectorException) {
                 logger.error(closed) { "Selector is closed with reason $closed" }
             } catch (ioEx: IOException) {
                 logger.error(ioEx) { "IOException happened while selecting" }
-            } catch (uncaught: Throwable) {
-                logger.error(uncaught) { "Uncaught error in channels" }
             }
         }
 
@@ -482,7 +487,7 @@ class Transport<IN, OUT>(
             logger.info { "Removing client ${clientMeta.clientKey} from registry" }
 
             client.requestChannel.cancel(CancellationException(cause))
-            client.responseChannel.cancel(CancellationException(cause))
+            client.responseChannel.cancel()
             clientMeta.deserializer?.close()
             client.socketChannel.closeAndIgnore()
         }

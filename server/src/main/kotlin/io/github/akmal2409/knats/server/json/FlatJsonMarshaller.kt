@@ -197,9 +197,14 @@ class Lexer {
     }
 }
 
-class FlatJsonMarshaller(private val lexer: Lexer) {
+fun interface JsonMarshaller {
 
-    fun unmarshall(jsonStr: String): Map<String, JsonValue> {
+    fun unmarshall(jsonStr: String): Map<String, JsonValue>
+}
+
+class FlatJsonMarshaller(private val lexer: Lexer) : JsonMarshaller {
+
+    override fun unmarshall(jsonStr: String): Map<String, JsonValue> {
         val values = mutableMapOf<String, JsonValue>()
         val tokens = lexer.lex(jsonStr)
 
