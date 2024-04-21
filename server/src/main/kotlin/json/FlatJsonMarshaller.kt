@@ -134,7 +134,7 @@ class Lexer {
                 tokens.add(SymbolOrValue(symbol = JsonSymbol.fromSymbol(jsonStr[i])))
                 i++
             } else {
-                throw RuntimeException("Cannot parse tokens")
+                throw java.lang.IllegalArgumentException("Cannot parse tokens. Unknown symbol encountered ${jsonStr[i]}")
             }
         }
 
@@ -202,10 +202,10 @@ class FlatJsonMarshaller(private val lexer: Lexer) {
         val values = mutableMapOf<String, JsonValue>()
         val tokens = lexer.lex(jsonStr)
 
-        if (tokens.isEmpty()) throw RuntimeException("Invalid JSON supplied. Expected at least {} empty object")
+        require(tokens.isNotEmpty()) { "Invalid JSON supplied. Expected at least {} empty object" }
 
-        if (tokens[0].symbol != JsonSymbol.LEFT_BRACE || tokens.last().symbol != JsonSymbol.RIGHT_BRACE) {
-            throw RuntimeException("Invalid JSON supplied. Malformed braces")
+        require(tokens[0].symbol == JsonSymbol.LEFT_BRACE && tokens.last().symbol == JsonSymbol.RIGHT_BRACE) {
+            "Invalid JSON supplied. Malformed braces"
         }
 
         var i = 1
@@ -233,14 +233,15 @@ class FlatJsonMarshaller(private val lexer: Lexer) {
             i++
             // should be comma or end
 
-            if (i == tokens.size - 2 && tokens[i].symbol == JsonSymbol.COMMA) {
-                throw IllegalArgumentException("Comma is present when there is no key")
+            when {
+                i == tokens.size - 2 && tokens[i].symbol == JsonSymbol.COMMA -> {
+                    throw IllegalArgumentException("Comma is present when there is no key")
+                }
+                i < tokens.size - 1 && tokens[i].symbol != JsonSymbol.COMMA -> {
+                    throw IllegalArgumentException("Expected a comma but received ${tokens[i].value}")
+                }
+                else -> i++
             }
-
-            if (i < tokens.size - 1 && tokens[i].symbol != JsonSymbol.COMMA) {
-                throw IllegalArgumentException("Expected a comma but received ${tokens[i].value}")
-            }
-            i++
         }
 
         return values
@@ -249,12 +250,3 @@ class FlatJsonMarshaller(private val lexer: Lexer) {
 
 }
 
-fun main() {
-    val marshaller = FlatJsonMarshaller(Lexer())
-
-    println(
-        marshaller.unmarshall(
-            "{\"num\": 123, \"bool\": true, \"float\": 2.004,  \"str\": \"some\"}"
-        ).entries.map{(key, value) -> "$key=$value"}
-    )
-}
