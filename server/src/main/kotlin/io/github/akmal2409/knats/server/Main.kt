@@ -11,15 +11,17 @@ import kotlinx.coroutines.runBlocking
 
 
 fun main() = runBlocking {
-    val protocolParser = SuspendableParser(10 * 1024 * 1024, 1024)
+    val config = RealConfiguration()
+    val protocolParser = SuspendableParser(config.maxPayloadSize, config.maxArgSize)
     val jsonMarshaller = FlatJsonMarshaller(Lexer())
+
 
     val server = Transport(
         serverSocketChannelFactory = NioTcpServerSocketChannelFactory(
-            InetSocketAddress("localhost", 5000)
+            InetSocketAddress(config.host, config.port)
         ),
         selectorFactory = SelectorFactoryImpl(),
-        connectionHandler = ServiceConnectionHandler(),
+        connectionHandler = ServiceConnectionHandler(config),
         requestDeserializerFactory = { RequestDeserializer(protocolParser, jsonMarshaller) },
         responseSerializer = { it }
     )

@@ -4,7 +4,6 @@ import io.github.akmal2409.knats.server.json.FlatJsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonValue
 import io.github.akmal2409.knats.server.parser.ConnectOperation
-import io.github.akmal2409.knats.server.parser.ConnectOptions
 import io.github.akmal2409.knats.server.parser.ParsingError
 import io.github.akmal2409.knats.server.parser.ParsingResult
 import io.github.akmal2409.knats.server.parser.PendingParsing
@@ -74,11 +73,24 @@ data class ConnectRequest(
 
 
 data object PingResponse : Response {
-    fun toByteBuffer() = ByteBuffer.wrap("PING\r\n".toByteArray(charset = Charsets.US_ASCII))
+    fun toByteBuffer(): ByteBuffer =
+        ByteBuffer.wrap("PING\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
 data object OkResponse : Response {
-    fun toByteBuffer() = ByteBuffer.wrap("+OK\r\n".toByteArray(charset = Charsets.US_ASCII))
+    fun toByteBuffer(): ByteBuffer =
+        ByteBuffer.wrap("+OK\r\n".toByteArray(charset = Charsets.US_ASCII))
+}
+
+data class ErrorResponse internal constructor(val message: String) : Response {
+
+    companion object {
+
+        fun authenticationTimeout() = ErrorResponse("Authentication Timeout")
+    }
+
+    fun toByteBuffer(): ByteBuffer =
+        ByteBuffer.wrap("-ERR '$message'\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
 data class MessageResponse(
@@ -121,6 +133,7 @@ fun convertToConnectRequest(
 fun convertToResponse(response: Response): ByteBuffer = when (response) {
     is PingResponse -> response.toByteBuffer()
     is OkResponse -> response.toByteBuffer()
+    is ErrorResponse -> response.toByteBuffer()
     else -> error("Unsupported response type ${response::class.qualifiedName}")
 }
 

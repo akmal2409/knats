@@ -11,9 +11,12 @@ import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
+import java.time.Duration
+import java.time.Instant
 import java.util.ArrayDeque
 import java.util.Queue
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -321,6 +324,7 @@ class Transport<IN, OUT>(
 ) {
 
     private val running = AtomicReference(false)
+    private val started = AtomicBoolean(false)
     private val mainLoopThread = AtomicReference<Thread>(null)
     private val writeLoopThread = AtomicReference<Thread>(null)
 
@@ -376,6 +380,7 @@ class Transport<IN, OUT>(
             onResponseError = ::onResponseError
         )
 
+        started.set(true)
         while (!Thread.currentThread().isInterrupted && selector.isOpen) {
 
             try {
@@ -398,6 +403,14 @@ class Transport<IN, OUT>(
         }
 
         logger.info { "Shutting down server" }
+    }
+
+    public fun awaitStart(duration: Duration) {
+        val stopWaitingAt = Instant.now().plus(duration)
+
+        while (stopWaitingAt.isAfter(Instant.now()) && !started.get()) {
+            // busy wait
+        }
     }
 
     /**
