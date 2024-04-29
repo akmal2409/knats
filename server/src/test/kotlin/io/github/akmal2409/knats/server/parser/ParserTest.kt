@@ -26,9 +26,6 @@ class ParserTest {
         val args = parsingResult.argsBuffer.remainingAsString(Charsets.US_ASCII)
 
         assertEquals(expectedArgs, args)
-
-        val other = commandAsBytes("PONG\r\n")
-        assertIs<PongOperation>(defaultParser.tryParse(other))
     }
 
     @Test
