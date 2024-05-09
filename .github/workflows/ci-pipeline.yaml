@@ -17,6 +17,9 @@ jobs:
         run: ./gradlew test
       - name: Publish artifact
         run: gradle publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USER: akmal2409
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1
         with:
