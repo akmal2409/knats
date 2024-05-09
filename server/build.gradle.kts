@@ -1,5 +1,6 @@
 plugins {
     id("knats.coroutine-reactive-conventions")
+    id("knats.publish-artifacts")
 }
 
 
