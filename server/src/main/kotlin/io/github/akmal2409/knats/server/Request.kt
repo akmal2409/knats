@@ -87,6 +87,10 @@ data class ErrorResponse internal constructor(val message: String) : Response {
     companion object {
 
         fun authenticationTimeout() = ErrorResponse("Authentication Timeout")
+
+        fun staleConnection() = ErrorResponse("Stale Connection")
+
+        fun unknownProtocolError() = ErrorResponse("Unknown Protocol Operation")
     }
 
     fun toByteBuffer(): ByteBuffer =
