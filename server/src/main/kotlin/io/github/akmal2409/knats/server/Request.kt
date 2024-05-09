@@ -65,6 +65,8 @@ data class SubscribeRequest(
     }
 }
 
+fun add(a: Int, b: Int) = a + b
+
 data object PongRequest : Request
 
 data class ConnectRequest(
