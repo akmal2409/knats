@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm")
     id("io.gitlab.arturbosch.detekt")
+    jacoco
 }
 
 kotlin {
@@ -27,9 +28,20 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport)
 }
 
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+}
 
 detekt {
     config.from(file(rootDir.resolve("config/detekt/detekt.yml")))
+}
+
+tasks.jacocoTestReport {
+    reports {
+        xml.required = true
+        html.required = true
+    }
 }
