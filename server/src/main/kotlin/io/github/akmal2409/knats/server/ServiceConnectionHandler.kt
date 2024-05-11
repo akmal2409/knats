@@ -2,7 +2,7 @@ package io.github.akmal2409.knats.server
 
 import io.github.akmal2409.knats.transport.ClientRequest
 import io.github.akmal2409.knats.transport.ConnectionHandler
-import io.github.akmal2409.knats.transport.common.scopedFlow
+import io.github.akmal2409.knats.extensions.scopedFlow
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.ByteBuffer
 import java.time.Clock

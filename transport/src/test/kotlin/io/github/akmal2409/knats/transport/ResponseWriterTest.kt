@@ -1,6 +1,6 @@
 package io.github.akmal2409.knats.transport
 
-import io.github.akmal2409.knats.transport.common.remainingAsString
+import io.github.akmal2409.knats.extensions.remainingAsString
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.ints.shouldBeExactly

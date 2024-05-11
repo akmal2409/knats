@@ -1,4 +1,4 @@
-package io.github.akmal2409.knats.transport.common
+package io.github.akmal2409.knats.extensions
 
 import java.nio.channels.Channel
 

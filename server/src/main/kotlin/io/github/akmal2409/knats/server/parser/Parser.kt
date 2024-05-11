@@ -1,6 +1,6 @@
 package io.github.akmal2409.knats.server.parser
 
-import io.github.akmal2409.knats.transport.common.toAsciiChar
+import io.github.akmal2409.knats.extensions.toAsciiChar
 import java.nio.ByteBuffer
 import io.github.akmal2409.knats.server.parser.ParsingError.Companion.INVALID_CLIENT_PROTOCOL
 import io.github.akmal2409.knats.server.parser.ParsingError.Companion.MAXIMUM_PAYLOAD_VIOLATION

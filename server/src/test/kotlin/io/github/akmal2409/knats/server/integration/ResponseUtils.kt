@@ -4,7 +4,7 @@ import io.github.akmal2409.knats.server.ErrorResponse
 import io.github.akmal2409.knats.server.OkResponse
 import io.github.akmal2409.knats.server.PingResponse
 import io.github.akmal2409.knats.server.Response
-import io.github.akmal2409.knats.transport.common.remainingAsString
+import io.github.akmal2409.knats.extensions.remainingAsString
 import java.nio.ByteBuffer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector

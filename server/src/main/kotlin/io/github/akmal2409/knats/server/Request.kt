@@ -12,7 +12,7 @@ import io.github.akmal2409.knats.server.parser.SubscribeOperation
 import io.github.akmal2409.knats.server.parser.SuspendableParser
 import io.github.akmal2409.knats.transport.DeserializationResult
 import io.github.akmal2409.knats.transport.RequestDeserializer
-import io.github.akmal2409.knats.transport.common.nextAsciiToken
+import io.github.akmal2409.knats.extensions.nextAsciiToken
 import java.nio.ByteBuffer
 
 class RequestDeserializer(
@@ -52,15 +52,20 @@ data class SubscribeRequest(
 ) : Request {
     companion object {
 
-        fun fromTokens(subject: String, queueGroupOrId: String, id: String): SubscribeRequest {
-            if (id.isEmpty()) {
-                return SubscribeRequest(
-                    subject = subject,
-                    subscriptionId = id
-                )
-            }
+        @JvmStatic
+        fun fromArgsBuffer(buf: ByteBuffer): SubscribeRequest {
+            val subject: String? = buf.nextAsciiToken()
+            val queueGroupOrId: String? = buf.nextAsciiToken()
+            val id: String? = buf.nextAsciiToken()
 
-            return SubscribeRequest(subject, queueGroupOrId, id)
+            requireNotNull(subject) { "Subject is not present" }
+            requireNotNull(queueGroupOrId) { "Queue group or ID not encountered" }
+
+            return if (id == null) {
+                SubscribeRequest(subject, queueGroupOrId)
+            } else {
+                SubscribeRequest(subject, id, queueGroupOrId)
+            }
         }
     }
 }
@@ -110,11 +115,7 @@ fun convertToRequest(parsingResult: ParsingResult, jsonMarshaller: JsonMarshalle
     when (parsingResult) {
         is ConnectOperation -> convertToConnectRequest(parsingResult, jsonMarshaller)
         is PongOperation -> PongRequest
-        is SubscribeOperation -> SubscribeRequest.fromTokens(
-            parsingResult.argsBuffer.nextAsciiToken(),
-            parsingResult.argsBuffer.nextAsciiToken(), parsingResult.argsBuffer.nextAsciiToken()
-        )
-
+        is SubscribeOperation -> SubscribeRequest.fromArgsBuffer(parsingResult.argsBuffer)
         else -> error("UNSUPPORTED OP")
     }
 
