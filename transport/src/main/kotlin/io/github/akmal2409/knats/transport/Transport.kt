@@ -1,6 +1,6 @@
 package io.github.akmal2409.knats.transport
 
-import io.github.akmal2409.knats.transport.common.closeAndIgnore
+import io.github.akmal2409.knats.extensions.closeAndIgnore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.net.InetAddress

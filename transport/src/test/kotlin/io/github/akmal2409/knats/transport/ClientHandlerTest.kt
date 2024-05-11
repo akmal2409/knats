@@ -1,6 +1,6 @@
 package io.github.akmal2409.knats.transport
 
-import io.github.akmal2409.knats.transport.common.remainingAsString
+import io.github.akmal2409.knats.extensions.remainingAsString
 import io.kotest.assertions.withClue
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
