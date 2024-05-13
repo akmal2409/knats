@@ -10,3 +10,11 @@ fun Channel.closeAndIgnore() = try {
 } catch (ex: Throwable) {
     // ignore
 }
+
+suspend fun <E> kotlinx.coroutines.channels.Channel<E>.sendAndIgnore(value: E) {
+    try {
+        this.send(value)
+    } catch (ex: Throwable) {
+        // ignore
+    }
+}
