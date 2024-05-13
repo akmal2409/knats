@@ -140,7 +140,7 @@ class ServiceConnectionHandler(
     ) {
         val subject = Subject.fromString(subscribeRequest.subject)
 
-        subjectRegistry.add(clientState.traceId, subject)
+        subjectRegistry.add(clientState.traceId, subscribeRequest.subscriptionId, subject)
 
         val channel = channelMap[clientState.traceId] ?: Channel()
         channelMap[clientState.traceId] = channel
@@ -169,7 +169,7 @@ class ServiceConnectionHandler(
 
         clients.forEach { client ->
             logger.info { "Going to fanout to client=$client" }
-            channelMap[client]?.send(buffer.slice().asReadOnlyBuffer())
+            channelMap[client.clientKey]?.send(buffer.slice().asReadOnlyBuffer())
         }
 
         if (clientState.options?.verbose == true) {
