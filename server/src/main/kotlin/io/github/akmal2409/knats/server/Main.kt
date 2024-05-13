@@ -12,7 +12,6 @@ import kotlinx.coroutines.runBlocking
 
 fun main() = runBlocking {
     val config = RealConfiguration()
-    val protocolParser = SuspendableParser(config.maxPayloadSize, config.maxArgSize)
     val jsonMarshaller = FlatJsonMarshaller(Lexer())
 
 
@@ -21,8 +20,15 @@ fun main() = runBlocking {
             InetSocketAddress(config.host, config.port)
         ),
         selectorFactory = SelectorFactoryImpl(),
-        connectionHandler = ServiceConnectionHandler(config),
-        requestDeserializerFactory = { RequestDeserializer(protocolParser, jsonMarshaller) },
+        connectionHandler = ServiceConnectionHandler(config, TrieClientSubjectRegistry()),
+        requestDeserializerFactory = {
+            RequestDeserializer(
+                SuspendableParser(
+                    config.maxPayloadSize,
+                    config.maxArgSize
+                ), jsonMarshaller
+            )
+        },
         responseSerializer = { it }
     )
 

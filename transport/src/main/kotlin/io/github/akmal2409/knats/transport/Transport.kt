@@ -76,23 +76,32 @@ internal class ResponseWriter<IN, OUT>(
             pollNextResponse()
         }
 
+        val dropClients = mutableListOf<ClientKey>()
+        val sendToClients = mutableListOf<Client<IN, OUT>>()
+
         for ((clientKey, buffer) in clientQueuedMessages) {
 
             val client = registry[clientKey]
 
             if (client == null) {
-
-                val droppedBuffer = clientQueuedMessages.remove(clientKey)
-                currentInFlightMessages -= droppedBuffer?.queue?.size ?: 0
-
-                logger.debug {
-                    "Dropping client buffer of size ${buffer.totalSize} because " +
-                            "no entry in registry for key $clientKey"
-                }
+                dropClients.add(clientKey)
             } else {
-                sendResponseToClient(client.socketChannel, clientKey)
+                sendToClients.add(client)
             }
         }
+
+        sendToClients.forEach { sendResponseToClient(it.socketChannel, it.key) }
+
+        dropClients.forEach { clientKey ->
+            val droppedBuffer = clientQueuedMessages.remove(clientKey)
+            currentInFlightMessages -= droppedBuffer?.queue?.size ?: 0
+
+            logger.debug {
+                "Dropping client buffer of size ${droppedBuffer?.totalSize} because " +
+                        "no entry in registry for key $clientKey"
+            }
+        }
+
     }
 
     /**
@@ -286,7 +295,7 @@ internal class ClientHandler<IN, OUT>(
                     }
 
                     if (clientMeta.readBuffer.hasRemaining()) {
-                        // wasn't read fullly, we need to shift everything what hasn't been read to the start
+                        // wasn't read fully, we need to shift everything what hasn't been read to the start
                         clientMeta.readBuffer.compact()
                     } else {
                         clientMeta.readBuffer.clear()
@@ -296,7 +305,7 @@ internal class ClientHandler<IN, OUT>(
                         is DeserializationResult.AvailableResult<IN> -> {
                             onParsed(clientMeta.clientKey, partialResult.value)
                             clientMeta.deserializer?.close()
-                            clientMeta.deserializer = requestDeserializerFactory()
+                            clientMeta.deserializer = null
                         }
 
                         else -> {
