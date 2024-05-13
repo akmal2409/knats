@@ -1,5 +1,6 @@
 package io.github.akmal2409.knats.server
 
+import io.github.akmal2409.knats.extensions.nextAsciiToken
 import io.github.akmal2409.knats.server.json.FlatJsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonValue
@@ -8,11 +9,11 @@ import io.github.akmal2409.knats.server.parser.ParsingError
 import io.github.akmal2409.knats.server.parser.ParsingResult
 import io.github.akmal2409.knats.server.parser.PendingParsing
 import io.github.akmal2409.knats.server.parser.PongOperation
+import io.github.akmal2409.knats.server.parser.PublishOperation
 import io.github.akmal2409.knats.server.parser.SubscribeOperation
 import io.github.akmal2409.knats.server.parser.SuspendableParser
 import io.github.akmal2409.knats.transport.DeserializationResult
 import io.github.akmal2409.knats.transport.RequestDeserializer
-import io.github.akmal2409.knats.extensions.nextAsciiToken
 import java.nio.ByteBuffer
 
 class RequestDeserializer(
@@ -43,7 +44,35 @@ data class PublishRequest(
     val payloadSize: Int,
     val payload: ByteBuffer,
     val replyTo: String? = null
-) : Request
+) : Request {
+
+    companion object {
+
+        @JvmStatic
+        fun fromOperation(operation: PublishOperation): PublishRequest {
+            val subject: String? = operation.argsBuffer.nextAsciiToken()
+            val replyTo: String? = operation.argsBuffer.nextAsciiToken() // optional
+            val byteCountStr: String? = operation.argsBuffer.nextAsciiToken()
+
+            requireNotNull(subject) { "Subject was not provided for PUB" }
+            val bytes: Int
+
+            if (byteCountStr == null) {
+                requireNotNull(replyTo) { "Byte size is missing for PUB" }
+                // replyTo becomes byte count
+                bytes = replyTo.toIntOrNull() ?: error("Byte size is not an integer")
+                return PublishRequest(
+                    subject, bytes, operation.payloadBuffer
+                )
+            } else {
+                requireNotNull(replyTo) { "ReplyTo is missing for PUB" }
+                bytes = byteCountStr.toIntOrNull() ?: error("Byte size is not an integer")
+
+                return PublishRequest(subject, bytes, operation.argsBuffer, replyTo)
+            }
+        }
+    }
+}
 
 data class SubscribeRequest(
     val subject: String,
@@ -69,6 +98,7 @@ data class SubscribeRequest(
         }
     }
 }
+
 
 data object PongRequest : Request
 
@@ -116,6 +146,7 @@ fun convertToRequest(parsingResult: ParsingResult, jsonMarshaller: JsonMarshalle
         is ConnectOperation -> convertToConnectRequest(parsingResult, jsonMarshaller)
         is PongOperation -> PongRequest
         is SubscribeOperation -> SubscribeRequest.fromArgsBuffer(parsingResult.argsBuffer)
+        is PublishOperation -> PublishRequest.fromOperation(parsingResult)
         else -> error("UNSUPPORTED OP")
     }
 

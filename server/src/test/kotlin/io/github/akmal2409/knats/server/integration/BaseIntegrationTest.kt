@@ -4,6 +4,7 @@ import io.github.akmal2409.knats.server.Request
 import io.github.akmal2409.knats.server.Response
 import io.github.akmal2409.knats.server.ServiceConnectionHandler
 import io.github.akmal2409.knats.server.TestConfiguration
+import io.github.akmal2409.knats.server.TrieClientSubjectRegistry
 import io.github.akmal2409.knats.transport.ClientRequest
 import java.net.InetAddress
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,7 +18,7 @@ abstract class BaseIntegrationTest {
 
     val config = TestConfiguration()
 
-    private val serviceConnectionHandler = ServiceConnectionHandler(config)
+    private val serviceConnectionHandler = ServiceConnectionHandler(config, TrieClientSubjectRegistry())
     val testCoroutineConfig = config.coroutineContext
 
     fun connect(requestFlow: Flow<Request>): Flow<Response> =
