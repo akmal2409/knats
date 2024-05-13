@@ -37,8 +37,8 @@ data class RealConfiguration(
     override val maxArgSize: Int = 1024,
     override val coroutineContext: CoroutineContext = Dispatchers.Default,
     override val clock: Clock = Clock.systemUTC(),
-    override val pingAfterInactivity: Duration = Duration.parse("5s"),
-    override val pingTimeout: Duration = Duration.parse("8s")
+    override val pingAfterInactivity: Duration = Duration.parse("10m"),
+    override val pingTimeout: Duration = Duration.parse("30s")
 ) : Configuration
 
 data class TestConfiguration @OptIn(ExperimentalCoroutinesApi::class) constructor(
