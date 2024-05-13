@@ -34,6 +34,12 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
                 it.token != Subject.SubjectToken.WILDCARD_TOKEN_PATTERN &&
                         it.token != Subject.SubjectToken.MATCH_REST_TOKEN_PATTERN
             }
+
+        fun selectMatchRestClientKeys(block: (Set<KEY>) -> Unit) =
+            childTokens?.get(Subject.SubjectToken.MATCH_REST_TOKEN_PATTERN)
+                ?.let { matchRestNode ->
+                    matchRestNode.clientKeys?.let { block(it) }
+                }
     }
 
     private val mutex = ReentrantLock()
@@ -83,24 +89,11 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
                     nextNode = nodeCursor.childTokens?.get(token.subject)
 
                     // all clients that subscribed to token.>
-                    nodeCursor.childTokens?.get(Subject.SubjectToken.MATCH_REST_TOKEN_PATTERN)
-                        ?.let { matchRestNode ->
-                            matchRestNode.clientKeys?.let { keys.addAll(it) }
-                        }
+                    nodeCursor.selectMatchRestClientKeys { keys.addAll(it) }
 
                     // all clients that subscribed to token.*.<token2>...
                     // if wildcard node exists, continue search recursively, by dropping one token
-                    nodeCursor.childTokens?.get(Subject.SubjectToken.WILDCARD_TOKEN_PATTERN)
-                        ?.let { wildcardNode ->
-                            if (index == tokens.lastIndex) {
-                                wildcardNode.clientKeys?.let { keys.addAll(it) }
-                            } else {
-                                clientsForSubject(
-                                    tokens.subList(index + 1, tokens.size),
-                                    wildcardNode, keys
-                                )
-                            }
-                        }
+                    collectFromWildcardNode(nodeCursor, keys, tokens, index)
                 }
 
                 token.isMatchRest() -> {
@@ -114,7 +107,11 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
                         collectSingleLevelAtNode(nodeCursor, keys)
                     } else {
                         nodeCursor.nonWildcardChildren?.forEach { childNode ->
-                            clientsForSubject(tokens.subList(index + 1, tokens.size), childNode, keys)
+                            clientsForSubject(
+                                tokens.subList(index + 1, tokens.size),
+                                childNode,
+                                keys
+                            )
                         }
                     }
                     break
@@ -128,6 +125,24 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
                 nodeCursor.clientKeys?.let { nodeClientKeys -> keys.addAll(nodeClientKeys) }
             }
         }
+    }
+
+    /**
+     * Collects
+     */
+    private fun collectFromWildcardNode(node: TokenNode, keys: MutableSet<KEY>,
+                                        tokens: List<Subject.SubjectToken>, tokenIndex: Int) {
+        node.childTokens?.get(Subject.SubjectToken.WILDCARD_TOKEN_PATTERN)
+            ?.let { wildcardNode ->
+                if (tokenIndex == tokens.lastIndex) {
+                    wildcardNode.clientKeys?.let { keys.addAll(it) }
+                } else {
+                    clientsForSubject(
+                        tokens.subList(tokenIndex + 1, tokens.size),
+                        wildcardNode, keys
+                    )
+                }
+            }
     }
 
     private fun collectFromNodeTillEnd(node: TokenNode, keys: MutableSet<KEY>) {
