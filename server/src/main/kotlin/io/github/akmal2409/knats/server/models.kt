@@ -27,7 +27,7 @@ data class Message(
 
 data class Subject(val tokens: List<SubjectToken>) {
 
-    data class SubjectToken(val subject: String) {
+    data class SubjectToken(val value: String) {
 
         companion object {
             const val WILDCARD_TOKEN_PATTERN = "*"
@@ -88,3 +88,4 @@ data class Subject(val tokens: List<SubjectToken>) {
         }
     }
 }
+

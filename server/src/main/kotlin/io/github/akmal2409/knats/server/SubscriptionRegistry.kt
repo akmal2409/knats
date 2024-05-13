@@ -13,10 +13,26 @@ import kotlin.concurrent.withLock
  */
 interface ClientSubjectRegistry<KEY> {
 
-    fun add(clientKey: KEY, subject: Subject)
+    /**
+     * Associates clientKey [KEY] with [subscriptionId] to a [subject]
+     */
+    fun add(clientKey: KEY, subscriptionId: String, subject: Subject)
 
-    fun clientsForSubject(subject: Subject): Set<KEY>
+    /**
+     * Returns all [ClientSubscriptionRef] associated with a particular subject.
+     */
+    fun clientsForSubject(subject: Subject): Set<ClientSubscriptionRef<KEY>>
+
+    /**
+     * Removes association between a [clientKey] and a subject for that [subscriptionId]
+     */
+    fun remove(clientKey: KEY, subscriptionId: String)
 }
+
+data class ClientSubscriptionRef<KEY>(
+    val clientKey: KEY,
+    val subscriptionId: String
+)
 
 /**
  * Uses token-based trie based implementation to support wildcard tokens
@@ -26,7 +42,7 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
     private inner class TokenNode(
         val token: String,
         var childTokens: MutableMap<String, TokenNode>? = null,
-        var clientKeys: MutableSet<KEY>? = null
+        var clientKeys: MutableSet<ClientSubscriptionRef<KEY>>? = null
     ) {
 
         val nonWildcardChildren: List<TokenNode>?
@@ -35,7 +51,7 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
                         it.token != Subject.SubjectToken.MATCH_REST_TOKEN_PATTERN
             }
 
-        fun selectMatchRestClientKeys(block: (Set<KEY>) -> Unit) =
+        fun selectMatchRestClientKeys(block: (Set<ClientSubscriptionRef<KEY>>) -> Unit) =
             childTokens?.get(Subject.SubjectToken.MATCH_REST_TOKEN_PATTERN)
                 ?.let { matchRestNode ->
                     matchRestNode.clientKeys?.let { block(it) }
@@ -43,40 +59,83 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
     }
 
     private val mutex = ReentrantLock()
+    private val subscriptionToSubject = mutableMapOf<ClientSubscriptionRef<KEY>, Subject>()
     private val root = TokenNode("")
 
-    override fun add(clientKey: KEY, subject: Subject) {
+    override fun add(clientKey: KEY, subscriptionId: String, subject: Subject) {
         mutex.withLock {
+            val clientSubscriptionRef = ClientSubscriptionRef(clientKey, subscriptionId)
+            require(clientSubscriptionRef !in subscriptionToSubject) {
+                "Subscription is already associated with a subject=${subscriptionToSubject[clientSubscriptionRef]}"
+            }
+
             var nodeCursor = root
 
             for (token in subject.tokens) {
                 val childTokens = nodeCursor.childTokens ?: HashMap()
-                childTokens[token.subject] = childTokens[token.subject] ?: TokenNode(token.subject)
+                childTokens[token.value] = childTokens[token.value] ?: TokenNode(token.value)
                 nodeCursor.childTokens = childTokens
 
                 nodeCursor =
-                    childTokens[token.subject] ?: error("Internal error: $token was not present")
+                    childTokens[token.value] ?: error("Internal error: $token was not present")
             }
 
             val clientKeys = nodeCursor.clientKeys ?: HashSet()
-            clientKeys.add(clientKey)
+            clientKeys.add(clientSubscriptionRef)
             nodeCursor.clientKeys = clientKeys
+            subscriptionToSubject[clientSubscriptionRef] = subject
         }
     }
 
-    override fun clientsForSubject(subject: Subject): Set<KEY> {
+    override fun clientsForSubject(subject: Subject): Set<ClientSubscriptionRef<KEY>> {
         mutex.withLock {
-            val keys = HashSet<KEY>()
+            val keys = HashSet<ClientSubscriptionRef<KEY>>()
 
             clientsForSubject(subject.tokens, root, keys)
             return keys
         }
     }
 
+    override fun remove(clientKey: KEY, subscriptionId: String) {
+        mutex.withLock {
+            val clientSubscriptionRef = ClientSubscriptionRef(clientKey, subscriptionId)
+
+            subscriptionToSubject[clientSubscriptionRef]?.let { subject ->
+                removeForSubject(clientSubscriptionRef, subject)
+            }
+
+            subscriptionToSubject.remove(clientSubscriptionRef)
+        }
+    }
+
+    private fun removeForSubject(clientSubscriptionRef: ClientSubscriptionRef<KEY>, subject: Subject) {
+        var nodeCursor: TokenNode? = root
+        var previous: TokenNode? = null
+
+        for (token in subject.tokens) {
+            previous = nodeCursor
+            nodeCursor = nodeCursor?.childTokens?.get(token.value)
+
+            if (nodeCursor == null) break
+        }
+
+        if (nodeCursor != null && previous != null) {
+            nodeCursor.clientKeys?.remove(clientSubscriptionRef)
+
+            if (nodeCursor.clientKeys?.isEmpty() == true) {
+                nodeCursor.clientKeys = null
+            }
+
+            if (nodeCursor.childTokens?.isEmpty() == true) {
+                previous.childTokens?.remove(subject.tokens.last().value)
+            }
+        }
+    }
+
     private fun clientsForSubject(
         tokens: List<Subject.SubjectToken>,
         node: TokenNode,
-        keys: MutableSet<KEY>
+        keys: MutableSet<ClientSubscriptionRef<KEY>>
     ) {
         if (tokens.isEmpty()) return
 
@@ -86,7 +145,7 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
         for ((index, token) in tokens.withIndex()) {
             when {
                 token.isPlain() -> {
-                    nextNode = nodeCursor.childTokens?.get(token.subject)
+                    nextNode = nodeCursor.childTokens?.get(token.value)
 
                     // all clients that subscribed to token.>
                     nodeCursor.selectMatchRestClientKeys { keys.addAll(it) }
@@ -130,8 +189,10 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
     /**
      * Collects
      */
-    private fun collectFromWildcardNode(node: TokenNode, keys: MutableSet<KEY>,
-                                        tokens: List<Subject.SubjectToken>, tokenIndex: Int) {
+    private fun collectFromWildcardNode(
+        node: TokenNode, keys: MutableSet<ClientSubscriptionRef<KEY>>,
+        tokens: List<Subject.SubjectToken>, tokenIndex: Int
+    ) {
         node.childTokens?.get(Subject.SubjectToken.WILDCARD_TOKEN_PATTERN)
             ?.let { wildcardNode ->
                 if (tokenIndex == tokens.lastIndex) {
@@ -145,7 +206,10 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
             }
     }
 
-    private fun collectFromNodeTillEnd(node: TokenNode, keys: MutableSet<KEY>) {
+    private fun collectFromNodeTillEnd(
+        node: TokenNode,
+        keys: MutableSet<ClientSubscriptionRef<KEY>>
+    ) {
         collectSingleLevelAtNode(node, keys)
 
         node.childTokens?.values?.forEach { childNode ->
@@ -153,7 +217,10 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
         }
     }
 
-    private fun collectSingleLevelAtNode(node: TokenNode, keys: MutableSet<KEY>) {
+    private fun collectSingleLevelAtNode(
+        node: TokenNode,
+        keys: MutableSet<ClientSubscriptionRef<KEY>>
+    ) {
         node.childTokens?.values?.forEach { childNode ->
             childNode.clientKeys?.let { childKeys -> keys.addAll(childKeys) }
         }
