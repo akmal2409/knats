@@ -18,16 +18,37 @@ fun ByteBuffer.nextAsciiToken(): String? {
 
     return buildString {
 
-        do {
-            val ch = get().toAsciiChar()
+        var ch = get().toAsciiChar()
 
-            if (ch.isWhitespace()) {
-                break
+        while (ch.isWhitespace() && hasRemaining()) {
+            ch = get().toAsciiChar()
+        }
+
+        if (!ch.isWhitespace()) {
+            append(ch)
+
+            while (hasRemaining() && !ch.isWhitespace()) {
+                ch = get().toAsciiChar()
+                if (ch.isWhitespace()) {
+                    position(position() - 1)
+                    break
+                }
+
+                append(ch)
             }
 
-            append(ch)
-        } while (hasRemaining())
+        }
+
     }.takeIf { it.isNotEmpty() }
 }
 
 fun Byte.toAsciiChar() = (this.toInt() and 0xff).toChar()
+
+fun Char.toAsciiByte() = (this.code.toByte())
+
+fun ByteBuffer.putAsciiString(text: String) {
+
+    for (ch in text) {
+        put(ch.toAsciiByte())
+    }
+}

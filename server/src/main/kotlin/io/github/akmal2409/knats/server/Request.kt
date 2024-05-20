@@ -1,6 +1,9 @@
 package io.github.akmal2409.knats.server
 
 import io.github.akmal2409.knats.extensions.nextAsciiToken
+import io.github.akmal2409.knats.extensions.putAsciiString
+import io.github.akmal2409.knats.extensions.remainingAsString
+import io.github.akmal2409.knats.extensions.toAsciiByte
 import io.github.akmal2409.knats.server.json.FlatJsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonValue
@@ -8,6 +11,7 @@ import io.github.akmal2409.knats.server.parser.ConnectOperation
 import io.github.akmal2409.knats.server.parser.ParsingError
 import io.github.akmal2409.knats.server.parser.ParsingResult
 import io.github.akmal2409.knats.server.parser.PendingParsing
+import io.github.akmal2409.knats.server.parser.PingOperation
 import io.github.akmal2409.knats.server.parser.PongOperation
 import io.github.akmal2409.knats.server.parser.PublishOperation
 import io.github.akmal2409.knats.server.parser.SubscribeOperation
@@ -15,6 +19,9 @@ import io.github.akmal2409.knats.server.parser.SuspendableParser
 import io.github.akmal2409.knats.transport.DeserializationResult
 import io.github.akmal2409.knats.transport.RequestDeserializer
 import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import kotlin.math.ceil
+import kotlin.math.log10
 
 class RequestDeserializer(
     private val parser: SuspendableParser,
@@ -54,7 +61,9 @@ data class PublishRequest(
             val replyTo: String? = operation.argsBuffer.nextAsciiToken() // optional
             val byteCountStr: String? = operation.argsBuffer.nextAsciiToken()
 
-            requireNotNull(subject) { "Subject was not provided for PUB" }
+            requireNotNull(subject) {
+                "Subject was not provided for PUB"
+            }
             val bytes: Int
 
             if (byteCountStr == null) {
@@ -68,10 +77,34 @@ data class PublishRequest(
                 requireNotNull(replyTo) { "ReplyTo is missing for PUB" }
                 bytes = byteCountStr.toIntOrNull() ?: error("Byte size is not an integer")
 
-                return PublishRequest(subject, bytes, operation.argsBuffer, replyTo)
+                return PublishRequest(subject, bytes, operation.payloadBuffer, replyTo)
             }
         }
     }
+}
+
+data class InfoResponse(
+    val serverId: String,
+    val serverName: String,
+    val version: String,
+    val go: String,
+    val host: String,
+    val port: Int,
+    val maxPayload: Int,
+    val proto: Int,
+    val headers: Boolean = false
+) : Response {
+
+    override fun toString(): String = "INFO " + """{"server_id": "$serverId",
+        "server_name": "$serverName",
+        "version": "$version",
+        "go": "$go",
+        "host": "$host",
+        "port": $port,
+        "max_payload": $maxPayload,
+        "proto": $proto,
+        "headers": $headers}""".replace(Regex("\\s"), "") + "\r\n"
+    fun toByteBuffer(): ByteBuffer = ByteBuffer.wrap(toString().toByteArray(Charsets.US_ASCII))
 }
 
 data class SubscribeRequest(
@@ -102,6 +135,8 @@ data class SubscribeRequest(
 
 data object PongRequest : Request
 
+data object PingRequest : Request
+
 data class ConnectRequest(
     val verbose: Boolean = true
 ) : Request
@@ -110,6 +145,11 @@ data class ConnectRequest(
 data object PingResponse : Response {
     fun toByteBuffer(): ByteBuffer =
         ByteBuffer.wrap("PING\r\n".toByteArray(charset = Charsets.US_ASCII))
+}
+
+data object PongResponse : Response {
+    fun toByteBuffer(): ByteBuffer =
+        ByteBuffer.wrap("PONG\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
 data object OkResponse : Response {
@@ -138,7 +178,57 @@ data class MessageResponse(
     val payloadSize: Int,
     val payload: ByteBuffer,
     val replyTo: String? = null
-) : Response
+) : Response {
+
+    companion object {
+
+        private const val MSG = "MSG"
+
+        fun from(publishRequest: PublishRequest, subscriptionId: String): MessageResponse =
+            MessageResponse(
+                subject = publishRequest.subject,
+                subscriptionId = subscriptionId,
+                payloadSize = publishRequest.payloadSize,
+                payload = publishRequest.payload.slice().asReadOnlyBuffer(),
+                replyTo = publishRequest.replyTo
+            )
+    }
+
+    fun toByteBuffer(): ByteBuffer {
+        var totalSize = payloadSize + 4 + ceil(log10(payloadSize.toFloat())).toInt() +
+                subscriptionId.length + subject.length + 3 + MSG.length
+
+        if (replyTo != null) totalSize += 1 + replyTo.length
+
+        val buffer = ByteBuffer.allocate(totalSize)
+        val space = ' '.toAsciiByte()
+
+        buffer.putAsciiString(MSG)
+        buffer.put(space)
+
+        buffer.putAsciiString(subject)
+        buffer.put(space)
+
+        buffer.putAsciiString(subscriptionId)
+        buffer.put(space)
+
+        replyTo?.let {
+            buffer.putAsciiString(it)
+            buffer.put(space)
+        }
+
+        buffer.putAsciiString(payloadSize.toString())
+        buffer.put('\r'.toAsciiByte())
+        buffer.put('\n'.toAsciiByte())
+
+        buffer.put(payload)
+        buffer.put('\r'.toAsciiByte())
+        buffer.put('\n'.toAsciiByte())
+
+        buffer.flip()
+        return buffer
+    }
+}
 
 
 fun convertToRequest(parsingResult: ParsingResult, jsonMarshaller: JsonMarshaller) =
@@ -147,6 +237,7 @@ fun convertToRequest(parsingResult: ParsingResult, jsonMarshaller: JsonMarshalle
         is PongOperation -> PongRequest
         is SubscribeOperation -> SubscribeRequest.fromArgsBuffer(parsingResult.argsBuffer)
         is PublishOperation -> PublishRequest.fromOperation(parsingResult)
+        is PingOperation -> PingRequest
         else -> error("UNSUPPORTED OP")
     }
 
@@ -170,6 +261,9 @@ fun convertToResponse(response: Response): ByteBuffer = when (response) {
     is PingResponse -> response.toByteBuffer()
     is OkResponse -> response.toByteBuffer()
     is ErrorResponse -> response.toByteBuffer()
+    is MessageResponse -> response.toByteBuffer()
+    is InfoResponse -> response.toByteBuffer()
+    is PongResponse -> response.toByteBuffer()
     else -> error("Unsupported response type ${response::class.qualifiedName}")
 }
 

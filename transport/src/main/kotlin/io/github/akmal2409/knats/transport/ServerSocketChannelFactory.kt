@@ -3,6 +3,7 @@ package io.github.akmal2409.knats.transport
 import java.net.InetSocketAddress
 import java.net.ProtocolFamily
 import java.net.StandardProtocolFamily
+import java.net.StandardSocketOptions
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 
@@ -28,5 +29,6 @@ class NioTcpServerSocketChannelFactory(
     override fun create(): ServerSocketChannel = ServerSocketChannel.open(protocolFamily).apply {
         bind(bindAddress)
         configureBlocking(false)
+        setOption(StandardSocketOptions.SO_REUSEADDR, true)
     }
 }

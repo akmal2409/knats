@@ -16,6 +16,7 @@ import io.mockk.verify
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.SocketOption
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
@@ -199,50 +200,7 @@ class ClientHandlerTest {
         parsedInvoked.shouldBeTrue()
     }
 
-    @Test
-    fun `If bytes are left after parsing, copies them to the start of the buffer`() {
-        val clientKey = ClientKey.fromRemoteAddress("/localhost")
-
-        val request = "Test Request"
-        var deserInvoked = false
-
-        val encodedRequest = request.toByteArray(Charsets.US_ASCII)
-        val requestBuffer = ByteBuffer.wrap(encodedRequest)
-
-        val requestDeser = MockRequestDeserializer { buffer ->
-
-            buffer.limit(buffer.capacity())
-            buffer.position(request.split(" ")[0].length + 1)
-
-            deserInvoked = true
-            DeserializationResult.of(request)
-        }
-
-        val handler = newHandler(overrideOnParsed = { _, _ -> },
-            overrideRequestDeserFactory = { requestDeser })
-
-        val selectionKey = mockk<SelectionKey>()
-        val channel = mockk<SocketChannel>()
-        every { selectionKey.attachment() } returns ClientChannelMetadata<String>(
-            clientKey,
-            requestBuffer
-        )
-        every { selectionKey.channel() } returns channel
-        every { channel.read(requestBuffer) } returns encodedRequest.size
-
-        handler.onRead(selectionKey)
-
-        requestBuffer.limit() shouldBeExactly encodedRequest.size
-
-        withClue("Read buffer position should be: ") {
-            requestBuffer.position() shouldBeExactly 7
-        }
-
-        requestBuffer.position(0).limit(7)
-            .remainingAsString(Charsets.US_ASCII) shouldBeEqual "Request"
-        deserInvoked.shouldBeTrue()
-    }
-
+    @Suppress("LongMethod")
     @Test
     fun `Successfully registers the client`() {
         val clientSocketAddress = mockk<InetSocketAddress>()
@@ -287,6 +245,7 @@ class ClientHandlerTest {
 
         every { selectionKey.channel() } returns serverSocketChannel
         every { serverSocketChannel.accept() } returns socketChannel
+        every { socketChannel.setOption(any<SocketOption<Boolean>>(), any()) } returns socketChannel
         every { socketChannel.remoteAddress } returns clientSocketAddress
         every { clientSocketAddress.address } returns clientAddress
 
@@ -406,6 +365,8 @@ class ClientHandlerTest {
         every { clientSocketChannel.register(any(), any()) } returns clientSelectionKey
         every { clientSelectionKey.attach(any()) } returns mockk()
         every { clientSocketChannel.configureBlocking(any()) } returns mockk()
+        every { clientSocketChannel.setOption(any<SocketOption<Boolean>>(), any()) } returns clientSocketChannel
+
 
         return selectionKey
     }

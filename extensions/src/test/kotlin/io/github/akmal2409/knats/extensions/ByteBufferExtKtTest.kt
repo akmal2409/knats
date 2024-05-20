@@ -29,6 +29,11 @@ class ByteBufferExtKtTest {
     }
 
     @Test
+    fun `nextAsciiToken skips double space`() {
+        assertNextAsciiToken("Hello  World", "Hello", "World")
+    }
+
+    @Test
     fun `nextAsciiToken returns tokens when present`() {
         assertNextAsciiToken("token1 token2", "token1", "token2", null)
     }
@@ -60,5 +65,13 @@ class ByteBufferExtKtTest {
     }
 
 
+    @Test
+    fun `putAsciiString() writes string correctly`() {
+        val expected = "Some string"
+        val buffer = ByteBuffer.allocate(expected.length)
+        buffer.putAsciiString(expected)
+
+        buffer.position(0).remainingAsString(charset = Charsets.US_ASCII) shouldBe expected
+    }
 
 }
