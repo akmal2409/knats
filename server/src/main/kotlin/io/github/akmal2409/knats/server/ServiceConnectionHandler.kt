@@ -1,7 +1,6 @@
 package io.github.akmal2409.knats.server
 
 import io.github.akmal2409.knats.extensions.scopedFlow
-import io.github.akmal2409.knats.transport.ClientKey
 import io.github.akmal2409.knats.transport.ClientRequest
 import io.github.akmal2409.knats.transport.ConnectionHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -14,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.delay
@@ -44,7 +42,7 @@ private data class ClientState(
 
 private class SubscriptionState(
     var pingChannel: ReceiveChannel<PingResponse>? = null,
-    var messageChannel: ReceiveChannel<ByteBuffer>? = null
+    var messageChannel: ReceiveChannel<MessageResponse>? = null
 ) : AutoCloseable {
     override fun close() {
         pingChannel?.cancel(CancellationException("Closing subscriptions"))
@@ -67,11 +65,17 @@ class ServiceConnectionHandler(
         return scopedFlow<ByteBuffer> { requestScope ->
             val channel = request.requestFlow.produceIn(requestScope)
 
+            emit(convertToResponse(InfoResponse(
+                config.serverId, config.serverName, config.version,
+                config.goVersion, config.advertisedHost, config.port, config.maxPayloadSize,
+                proto = config.protocolVersion, headers = false
+            )))
+
             while (true) {
 
                 select {
                     channel.onReceive {
-                        logger.info { "traceId=${clientState.traceId} Received request $request" }
+                        logger.info { "traceId=${clientState.traceId} Received request $it" }
 
                         onRequestReceived(it, clientState, subscriptionState, requestScope)
                     }
@@ -94,7 +98,7 @@ class ServiceConnectionHandler(
 
                         subscriptionState.messageChannel?.onReceiveCatching { channelResult ->
                             logger.debug { "traceId=${clientState.traceId} Sending message" }
-                            emit(channelResult.getOrThrow())
+                            emit(convertToResponse(channelResult.getOrThrow()))
                         }
                     }
                 }
@@ -102,7 +106,12 @@ class ServiceConnectionHandler(
 
             }
         }.catch { ex ->
-            logger.error(ex) { "Error in flow" }
+            val reportEx = when (ex) {
+                is CancellationException -> ex.cause
+                else -> ex
+            }
+
+            logger.error(reportEx) { "Exception in transport flow" }
             throw ex
         }.onEach { logger.info { "Emitting response $it" } }
     }
@@ -124,6 +133,7 @@ class ServiceConnectionHandler(
         when (request) {
             is ConnectRequest -> handleConnectRequest(request, state, subscriptionState, scope)
             is PongRequest -> handlePongRequest(state)
+            is PingRequest -> handlePingRequest(state)
             is SubscribeRequest -> handleSubscribeRequest(request, state, subscriptionState)
             is PublishRequest -> handlePublishRequest(request, state)
         }
@@ -131,7 +141,7 @@ class ServiceConnectionHandler(
         state.updateLastRequestTime()
     }
 
-    private val channelMap: MutableMap<String, Channel<ByteBuffer>> = ConcurrentHashMap()
+    private val channelMap: MutableMap<String, Channel<MessageResponse>> = ConcurrentHashMap()
 
     private suspend fun FlowCollector<ByteBuffer>.handleSubscribeRequest(
         subscribeRequest: SubscribeRequest,
@@ -160,21 +170,21 @@ class ServiceConnectionHandler(
         val subject = Subject.fromString(publishRequest.subject)
         val clients = subjectRegistry.clientsForSubject(subject)
 
-        val buffer = ByteBuffer.allocate(publishRequest.payload.capacity() + 2)
-        buffer.put(publishRequest.payload)
-        buffer.put(publishRequest.payload.capacity(), '\r'.toByte())
-        buffer.put(publishRequest.payload.capacity() + 1, '\n'.toByte())
-        buffer.position(0)
-        buffer.limit(buffer.capacity())
-
         clients.forEach { client ->
-            logger.info { "Going to fanout to client=$client" }
-            channelMap[client.clientKey]?.send(buffer.slice().asReadOnlyBuffer())
+            val message = MessageResponse.from(publishRequest, client.subscriptionId)
+
+            channelMap[client.clientKey]?.send(message)
         }
 
         if (clientState.options?.verbose == true) {
             emit(convertToResponse(OkResponse))
         }
+    }
+
+    private suspend fun FlowCollector<ByteBuffer>.handlePingRequest(state: ClientState) {
+        state.updateLastRequestTime()
+        emit(convertToResponse(PongResponse))
+        logger.debug { "traceId=${state.traceId} Sent PONG to client" }
     }
 
     private suspend fun FlowCollector<ByteBuffer>.handleConnectRequest(
@@ -209,7 +219,6 @@ class ServiceConnectionHandler(
     }
 
     private fun createPingFlow(state: ClientState): Flow<PingResponse> = flow {
-
         while (true) {
             val pingSentAt = state.pendingPingMessageSentAt
             val pingTimeoutAt = pingSentAt?.let { pingSentAt + config.pingTimeout.toJavaDuration() }

@@ -5,6 +5,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.StandardSocketOptions
 import java.nio.ByteBuffer
 import java.nio.channels.ClosedSelectorException
 import java.nio.channels.SelectionKey
@@ -79,7 +80,7 @@ internal class ResponseWriter<IN, OUT>(
         val dropClients = mutableListOf<ClientKey>()
         val sendToClients = mutableListOf<Client<IN, OUT>>()
 
-        for ((clientKey, buffer) in clientQueuedMessages) {
+        for ((clientKey, _) in clientQueuedMessages) {
 
             val client = registry[clientKey]
 
@@ -220,6 +221,7 @@ internal class ClientHandler<IN, OUT>(
     fun onAccept(selectionKey: SelectionKey, readSelector: Selector) {
         val clientChannel = (selectionKey.channel() as ServerSocketChannel).accept().apply {
             configureBlocking(false)
+            setOption(StandardSocketOptions.SO_KEEPALIVE, true)
         }
 
         val requestChannel = Channel<IN>()
@@ -284,38 +286,41 @@ internal class ClientHandler<IN, OUT>(
 
                 if (bytesRead > 0) {
                     clientMeta.readBuffer.flip()
+                    var read = true
 
-                    val partialResult = try {
-                        deserializer.deserialize(clientMeta.readBuffer)
-                    } catch (ex: Throwable) {
-                        logger.error(ex) { "Could not parse request. Removing client" }
+                    while (read) {
 
-                        onRequestError(clientMeta.clientKey, selectionKey, ex)
-                        return
-                    }
+                        val partialResult = try {
+                            deserializer.deserialize(clientMeta.readBuffer)
+                        } catch (ex: Throwable) {
+                            logger.error(ex) { "Could not parse request. Removing client" }
 
-                    if (clientMeta.readBuffer.hasRemaining()) {
-                        // wasn't read fully, we need to shift everything what hasn't been read to the start
-                        clientMeta.readBuffer.compact()
-                    } else {
-                        clientMeta.readBuffer.clear()
-                    }
-
-                    when (partialResult) {
-                        is DeserializationResult.AvailableResult<IN> -> {
-                            onParsed(clientMeta.clientKey, partialResult.value)
-                            clientMeta.deserializer?.close()
-                            clientMeta.deserializer = null
+                            onRequestError(clientMeta.clientKey, selectionKey, ex)
+                            return
                         }
 
-                        else -> {
-                            // continue reading
+                        if (!clientMeta.readBuffer.hasRemaining()) {
+                            read = false
+                        }
+
+                        when (partialResult) {
+                            is DeserializationResult.AvailableResult<IN> -> {
+                                onParsed(clientMeta.clientKey, partialResult.value)
+                                clientMeta.deserializer?.close()
+                                clientMeta.deserializer = requestDeserializerFactory()
+                            }
+
+                            is DeserializationResult.PendingResult<IN> -> {
+                                // continue reading
+                            }
                         }
                     }
 
+                    clientMeta.readBuffer.clear()
                 }
             } catch (ex: IOException) {
                 onRequestError(clientMeta.clientKey, selectionKey, ex)
+                throw ex
             }
         }
     }
@@ -402,6 +407,10 @@ class Transport<IN, OUT>(
                         }
                     } catch (uncaught: Throwable) {
                         logger.error(uncaught) { "Uncaught error in channels" }
+
+                        when (uncaught) {
+                            is IOException -> throw uncaught
+                        }
                     }
                 }
             } catch (closed: ClosedSelectorException) {
@@ -437,12 +446,12 @@ class Transport<IN, OUT>(
     }
 
     private fun onRequestError(clientKey: ClientKey?, selectionKey: SelectionKey, ex: Throwable) {
-        logger.error(ex) { "Exception occurred when processing request for client $clientKey" }
+        logger.debug(ex) { "Exception occurred when processing request for client $clientKey" }
         selectionKey.cancelClientAndIgnore(ex)
     }
 
     private fun onResponseError(clientKey: ClientKey, selectionKey: SelectionKey, ex: Throwable) {
-        logger.error(ex) { "Exception occurred when processing response for client $clientKey" }
+        logger.debug(ex) { "Exception occurred when processing response for client $clientKey" }
         selectionKey.cancelClientAndIgnore(ex)
     }
 
@@ -468,7 +477,7 @@ class Transport<IN, OUT>(
         logger.info { "Starting response collector " }
         while (true) {
             val clientMessage = globalResponseChannel.receive()
-            logger.info { "Forwarding message for ${clientMessage.clientKey}" }
+            logger.debug { "Forwarding message for ${clientMessage.clientKey}" }
             messageByteQueue.offer(clientMessage)
         }
     }
@@ -506,7 +515,7 @@ class Transport<IN, OUT>(
 
     private fun removeClient(clientMeta: ClientChannelMetadata<IN>, cause: Throwable? = null) {
         registry.remove(clientMeta.clientKey)?.let { client ->
-            logger.info { "Removing client ${clientMeta.clientKey} from registry" }
+            logger.debug { "Removing client ${clientMeta.clientKey} from registry" }
 
             client.requestChannel.cancel(CancellationException(cause))
             client.responseChannel.cancel()

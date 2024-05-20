@@ -16,17 +16,17 @@ data class ParsingError(val reason: String, val throwable: Throwable? = null) : 
 
 class ConnectOperation(val argsBuffer: ByteBuffer) : ParsingResult {
 
-    override fun toString(): String = argsBuffer.remainingAsString()
+    override fun toString(): String = argsBuffer.slice().remainingAsString()
 }
 
 class SubscribeOperation(val argsBuffer: ByteBuffer) : ParsingResult {
 
-    override fun toString(): String = argsBuffer.remainingAsString()
+    override fun toString(): String = argsBuffer.slice().remainingAsString()
 }
 
 class PublishOperation(val argsBuffer: ByteBuffer, val payloadBuffer: ByteBuffer) : ParsingResult {
     override fun toString(): String =
-        "args=[${argsBuffer.remainingAsString()}] payload=[${payloadBuffer.remainingAsString()}]"
+        "args=[${argsBuffer.slice().remainingAsString()}] payload=[${payloadBuffer.slice().remainingAsString()}]"
 }
 
 class PendingParsing(val bytesRead: Int) : ParsingResult {
@@ -34,3 +34,5 @@ class PendingParsing(val bytesRead: Int) : ParsingResult {
 }
 
 class PongOperation : ParsingResult
+
+class PingOperation : ParsingResult

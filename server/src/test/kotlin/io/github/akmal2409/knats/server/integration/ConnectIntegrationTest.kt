@@ -2,6 +2,7 @@ package io.github.akmal2409.knats.server.integration
 
 import io.github.akmal2409.knats.server.ConnectRequest
 import io.github.akmal2409.knats.server.ErrorResponse
+import io.github.akmal2409.knats.server.InfoResponse
 import io.github.akmal2409.knats.server.OkResponse
 import io.github.akmal2409.knats.server.PongRequest
 import io.github.akmal2409.knats.server.Request
@@ -12,6 +13,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.take
@@ -22,12 +24,29 @@ import kotlin.time.Duration
 class ConnectIntegrationTest : BaseIntegrationTest() {
 
     @Test
+    fun `Sends info message on initial connect`() = runTest(super.testCoroutineConfig) {
+        val requestFlow = flow<Request> {}
+
+        val responseFlow = super.connect(requestFlow)
+
+        val infoMessage = responseFlow.take(1).single()
+
+        infoMessage.shouldBeInstanceOf<InfoResponse>()
+
+        infoMessage shouldBe InfoResponse(
+            config.serverId, config.serverName, config.version,
+            config.goVersion, config.host, config.port, config.maxPayloadSize,
+            config.protocolVersion
+        )
+    }
+
+    @Test
     fun `Disconnects with an error on connection timeout`() = runTest(super.testCoroutineConfig) {
         val requestFlow = flow<Request> {
             delay(config.connectTimeout + Duration.parse("10s"))
         }
 
-        val responseFlow = super.connect(requestFlow)
+        val responseFlow = super.connect(requestFlow).drop(1)
 
         var response: Response? = null
 
@@ -48,7 +67,7 @@ class ConnectIntegrationTest : BaseIntegrationTest() {
 
         val responseFlow = super.connect(requestFlow)
 
-        val response = responseFlow.take(1).single()
+        val response = responseFlow.drop(1).take(1).single()
 
         response shouldBe OkResponse
     }

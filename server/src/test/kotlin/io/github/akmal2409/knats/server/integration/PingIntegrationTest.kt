@@ -14,6 +14,7 @@ import java.util.concurrent.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.test.advanceTimeBy
@@ -31,7 +32,9 @@ class PingIntegrationTest : BaseIntegrationTest() {
         val requestFlow = MutableStateFlow<Request>(ConnectRequest(verbose = false))
 
         val responseFlow = super.connect(requestFlow)
-        val responseChannel = responseFlow.produceIn(this)
+        val responseChannel = responseFlow
+            .drop(1)
+            .produceIn(this)
         val connectTime = currentTime
 
         responseChannel.isEmpty.shouldBeTrue()
@@ -67,7 +70,7 @@ class PingIntegrationTest : BaseIntegrationTest() {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun `Does not close connection if PONG received`() = runTest(super.testCoroutineConfig) {
         val requestFlow = MutableStateFlow<Request>(ConnectRequest(verbose = false))
-        val responseFlow = super.connect(requestFlow)
+        val responseFlow = super.connect(requestFlow).drop(1)
         val responseChannel = responseFlow.produceIn(this)
 
         advanceTimeBy(config.pingAfterInactivity)

@@ -1,9 +1,9 @@
 package io.github.akmal2409.knats.server.parser
 
 import io.github.akmal2409.knats.extensions.toAsciiChar
-import java.nio.ByteBuffer
 import io.github.akmal2409.knats.server.parser.ParsingError.Companion.INVALID_CLIENT_PROTOCOL
 import io.github.akmal2409.knats.server.parser.ParsingError.Companion.MAXIMUM_PAYLOAD_VIOLATION
+import java.nio.ByteBuffer
 
 
 /**
@@ -31,12 +31,18 @@ private val pongOps = setOf(
     State.OP_PO, State.OP_PON, State.OP_PONG
 )
 
+private val pingOps = setOf(
+    State.OP_PI, State.OP_PIN, State.OP_PING
+)
+
 enum class State {
     OP_START, OP_PARSE_ARGS,
     OP_C, OP_CO, OP_CON, OP_CONN, OP_CONNE, OP_CONNEC,
     OP_CONNECT, OP_CONNECT_PARSED_ARGS, // will follow json like conifg {}
 
     OP_P, OP_PO, OP_PON, OP_PONG, // no args after
+
+    OP_PI, OP_PIN, OP_PING,
 
     OP_S, OP_SU, OP_SUB, OP_SUB_PARSED_ARGS, // with subject, optionally queue group and sub_id after
 
@@ -52,6 +58,8 @@ enum class State {
 
     fun isPubOp() = pubOps.contains(this)
     fun isPongOp() = pongOps.contains(this)
+
+    fun isPingOp() = pingOps.contains(this)
 }
 
 const val CRLF_BEGIN = '\r'
@@ -99,6 +107,10 @@ class Context(
         this.argsBuffer = this.argsBuffer ?: bufferFactory()
         this.parsingArgs = true
     }
+
+    fun afterArgParsing() {
+        this.parsingArgs = false
+    }
 }
 
 // this protocol considers only empty space and \t as a whitespace
@@ -140,7 +152,7 @@ class SuspendableParser(
         context.argsBuffer = null
     }
 
-    @Suppress("CyclomaticComplexMethod", "ComplexCondition", "LoopWithTooManyJumpStatements")
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition", "LoopWithTooManyJumpStatements", "LongMethod")
     fun tryParse(bytes: ByteBuffer): ParsingResult {
 
         var result: ParsingResult? = null
@@ -200,6 +212,11 @@ class SuspendableParser(
                             null
                         }
 
+                        'i'.equals(opCh, true) -> {
+                            context.state = State.OP_PI
+                            null
+                        }
+
                         else -> INVALID_CLIENT_PROTOCOL
                     }
                 }
@@ -212,13 +229,33 @@ class SuspendableParser(
 
                 context.state.isPongOp() -> parsePong(context, opCh)
 
-
+                context.state.isPingOp() -> parsePing(context, opCh)
                 else -> error("Unsupported global state transition")
             }
         }
 
 
         return result ?: PendingParsing(bytesRead)
+    }
+
+    private fun parsePing(context: Context, opCh: Char): ParsingResult? = when (context.state) {
+        State.OP_PI -> context.moveStateOnCh(State.OP_PIN, opCh, 'n')
+
+        State.OP_PIN -> context.moveStateOnCh(State.OP_PING, opCh, 'g')
+
+        State.OP_PING -> when {
+            opCh == CRLF_BEGIN && !context.carriageReturnEncountered -> {
+                context.carriageReturnEncountered = true
+                null
+            }
+
+            opCh == CRLF_END && context.carriageReturnEncountered -> {
+                PingOperation()
+            }
+
+            else -> INVALID_CLIENT_PROTOCOL
+        }
+        else -> error("Illegal state transition for PING ${context.state}")
     }
 
     private fun parsePong(context: Context, opCh: Char): ParsingResult? = when (context.state) {
@@ -333,12 +370,12 @@ class SuspendableParser(
             }
 
             State.OP_CONNECT_PARSED_ARGS -> {
-
-                if (context.argsBuffer == null || context.argsBuffer!!.position() == 0) {
+                val argsBuffer = context.argsBuffer
+                if (argsBuffer == null || argsBuffer.position() == 0) {
                     result = INVALID_CLIENT_PROTOCOL
                 } else {
-                    context.argsBuffer!!.flip()
-                    result = ConnectOperation(context.argsBuffer!!)
+                    argsBuffer.flip()
+                    result = ConnectOperation(argsBuffer)
                 }
             }
 
@@ -394,7 +431,7 @@ class SuspendableParser(
         return result
     }
 
-    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "LongMethod")
     private fun parsePub(
         context: Context,
         byte: Byte,
@@ -422,6 +459,7 @@ class SuspendableParser(
         }
 
         context.state == State.OP_PUB_PARSED_ARGS -> {
+            context.afterArgParsing()
             if (context.argsBuffer == null || context.argsBuffer!!.position() < INT_ARG_SIZE) {
                 // means doesnt have an int (for payload size) and at least 1 char for subject + whitespace
                 INVALID_CLIENT_PROTOCOL
@@ -434,6 +472,7 @@ class SuspendableParser(
                 if (payloadSize == null || payloadSize < 0 || payloadSize > maxPayloadSize) {
                     MAXIMUM_PAYLOAD_VIOLATION
                 } else {
+                    context.payloadBuffer?.clear()
                     var payloadBuffer = context.payloadBuffer ?: bufferFactory(payloadSize)
 
                     if (payloadBuffer.limit() < payloadSize) {
@@ -468,7 +507,9 @@ class SuspendableParser(
                     PublishOperation(context.argsBuffer!!, payloadBuffer)
                 }
 
-                else -> MAXIMUM_PAYLOAD_VIOLATION
+                else -> {
+                    MAXIMUM_PAYLOAD_VIOLATION
+                }
             }
         }
 

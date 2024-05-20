@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import kotlin.test.Test
 
 
+@Suppress("VariableNaming")
 class TrieClientSubjectRegistryTest {
 
     val client1_1 = ClientSubscriptionRef("client-1", "1")
@@ -112,10 +113,14 @@ class TrieClientSubjectRegistryTest {
 
         registry.remove(client1_1.clientKey, client1_1.subscriptionId)
 
-        registry.clientsForSubject(Subject.fromString("foo.*")) shouldContainExactlyInAnyOrder setOf(client1_2)
+        registry.clientsForSubject(Subject.fromString("foo.*")) shouldContainExactlyInAnyOrder setOf(
+            client1_2
+        )
     }
 
-    private fun <KEY> TrieClientSubjectRegistry<KEY>.addClients(clientSubscriptions: List<Pair<ClientSubscriptionRef<KEY>, Subject>>) {
+    private fun <KEY> TrieClientSubjectRegistry<KEY>.addClients(
+        clientSubscriptions: List<Pair<ClientSubscriptionRef<KEY>, Subject>>
+    ) {
         clientSubscriptions.forEach { (key, subject) ->
             this.add(key.clientKey, key.subscriptionId, subject)
         }

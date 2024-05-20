@@ -132,6 +132,7 @@ class TrieClientSubjectRegistry<KEY> : ClientSubjectRegistry<KEY> {
         }
     }
 
+    @Suppress("LoopWithTooManyJumpStatements")
     private fun clientsForSubject(
         tokens: List<Subject.SubjectToken>,
         node: TokenNode,

@@ -21,9 +21,7 @@ data class Message(
     val serializedPayload: ByteBuffer,
     val replyTo: String?,
     val receivedAt: Instant
-) {
-}
-
+)
 
 data class Subject(val tokens: List<SubjectToken>) {
 
@@ -80,7 +78,8 @@ data class Subject(val tokens: List<SubjectToken>) {
                                 "last token (when there is a token before)"
                     }
 
-                    tokens[i].isMatchRest() && i < tokens.size - 1 -> argumentError { "> wildcard should be last token" }
+                    tokens[i].isMatchRest() && i < tokens.size - 1 ->
+                        argumentError { "> wildcard should be last token" }
                 }
             }
 
