@@ -2,8 +2,8 @@ package io.github.akmal2409.knats.server
 
 import io.github.akmal2409.knats.extensions.nextAsciiToken
 import io.github.akmal2409.knats.extensions.putAsciiString
-import io.github.akmal2409.knats.extensions.remainingAsString
 import io.github.akmal2409.knats.extensions.toAsciiByte
+import io.github.akmal2409.knats.server.common.numberOfDigits
 import io.github.akmal2409.knats.server.json.FlatJsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonMarshaller
 import io.github.akmal2409.knats.server.json.JsonValue
@@ -19,9 +19,6 @@ import io.github.akmal2409.knats.server.parser.SuspendableParser
 import io.github.akmal2409.knats.transport.DeserializationResult
 import io.github.akmal2409.knats.transport.RequestDeserializer
 import java.nio.ByteBuffer
-import java.nio.charset.Charset
-import kotlin.math.ceil
-import kotlin.math.log10
 
 class RequestDeserializer(
     private val parser: SuspendableParser,
@@ -44,7 +41,10 @@ class RequestDeserializer(
 
 sealed interface Request
 
-sealed interface Response
+sealed interface Response {
+
+    fun toByteBuffer(): ByteBuffer
+}
 
 data class PublishRequest(
     val subject: String,
@@ -66,18 +66,18 @@ data class PublishRequest(
             }
             val bytes: Int
 
-            if (byteCountStr == null) {
+            return if (byteCountStr == null) {
                 requireNotNull(replyTo) { "Byte size is missing for PUB" }
                 // replyTo becomes byte count
                 bytes = replyTo.toIntOrNull() ?: error("Byte size is not an integer")
-                return PublishRequest(
+                PublishRequest(
                     subject, bytes, operation.payloadBuffer
                 )
             } else {
                 requireNotNull(replyTo) { "ReplyTo is missing for PUB" }
                 bytes = byteCountStr.toIntOrNull() ?: error("Byte size is not an integer")
 
-                return PublishRequest(subject, bytes, operation.payloadBuffer, replyTo)
+                PublishRequest(subject, bytes, operation.payloadBuffer, replyTo)
             }
         }
     }
@@ -104,7 +104,7 @@ data class InfoResponse(
         "max_payload": $maxPayload,
         "proto": $proto,
         "headers": $headers}""".replace(Regex("\\s"), "") + "\r\n"
-    fun toByteBuffer(): ByteBuffer = ByteBuffer.wrap(toString().toByteArray(Charsets.US_ASCII))
+    override fun toByteBuffer(): ByteBuffer = ByteBuffer.wrap(toString().toByteArray(Charsets.US_ASCII))
 }
 
 data class SubscribeRequest(
@@ -143,17 +143,17 @@ data class ConnectRequest(
 
 
 data object PingResponse : Response {
-    fun toByteBuffer(): ByteBuffer =
+    override fun toByteBuffer(): ByteBuffer =
         ByteBuffer.wrap("PING\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
 data object PongResponse : Response {
-    fun toByteBuffer(): ByteBuffer =
+    override fun toByteBuffer(): ByteBuffer =
         ByteBuffer.wrap("PONG\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
 data object OkResponse : Response {
-    fun toByteBuffer(): ByteBuffer =
+    override fun toByteBuffer(): ByteBuffer =
         ByteBuffer.wrap("+OK\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
@@ -168,7 +168,7 @@ data class ErrorResponse internal constructor(val message: String) : Response {
         fun unknownProtocolError() = ErrorResponse("Unknown Protocol Operation")
     }
 
-    fun toByteBuffer(): ByteBuffer =
+    override fun toByteBuffer(): ByteBuffer =
         ByteBuffer.wrap("-ERR '$message'\r\n".toByteArray(charset = Charsets.US_ASCII))
 }
 
@@ -194,8 +194,8 @@ data class MessageResponse(
             )
     }
 
-    fun toByteBuffer(): ByteBuffer {
-        var totalSize = payloadSize + 4 + ceil(log10(payloadSize.toFloat())).toInt() +
+    override fun toByteBuffer(): ByteBuffer {
+        var totalSize = payloadSize + 4 + payloadSize.numberOfDigits() +
                 subscriptionId.length + subject.length + 3 + MSG.length
 
         if (replyTo != null) totalSize += 1 + replyTo.length
@@ -221,7 +221,7 @@ data class MessageResponse(
         buffer.put('\r'.toAsciiByte())
         buffer.put('\n'.toAsciiByte())
 
-        buffer.put(payload)
+        if (payloadSize > 0) buffer.put(payload)
         buffer.put('\r'.toAsciiByte())
         buffer.put('\n'.toAsciiByte())
 
@@ -256,14 +256,3 @@ fun convertToConnectRequest(
         }?.asBoolean() ?: true
     )
 }
-
-fun convertToResponse(response: Response): ByteBuffer = when (response) {
-    is PingResponse -> response.toByteBuffer()
-    is OkResponse -> response.toByteBuffer()
-    is ErrorResponse -> response.toByteBuffer()
-    is MessageResponse -> response.toByteBuffer()
-    is InfoResponse -> response.toByteBuffer()
-    is PongResponse -> response.toByteBuffer()
-    else -> error("Unsupported response type ${response::class.qualifiedName}")
-}
-

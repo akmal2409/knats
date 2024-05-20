@@ -251,4 +251,6 @@ class ServiceConnectionHandler(
             }
         }
     }
+
+    private fun convertToResponse(response: Response) = response.toByteBuffer()
 }
