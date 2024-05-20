@@ -3,7 +3,7 @@ repositories {
     mavenCentral()
 }
 
-val kotlinVersion = "2.0.0-RC1"
+val kotlinVersion = "2.0.0-RC3"
 val detektVersion = "1.23.6"
 
 plugins {
